@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Treasury {
+  id                              String     @id @default(uuid())
+  name                            String
+  organizationType                String
+  reportingCurrency               String     @default("USD")
+  monthlyExpenses                 Float
+  oneTimeExpenses                 Float      @default(0)
+  nextPaymentDate                 DateTime?
+  targetReserveMonths             Int
+  minimumProtectedReservePercent  Float
+  riskTolerance                   String
+  archived                        Boolean    @default(false)
+  createdAt                       DateTime   @default(now())
+  updatedAt                       DateTime   @updatedAt
+  holdings                        Holding[]
+  snapshots                       Snapshot[]
+}
+
+model Holding {
+  id                  String   @id @default(uuid())
+  treasuryId          String
+  symbol              String
+  name                String
+  quantity            Float
+  isStablecoin        Boolean
+  manuallyClassified  Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  treasury            Treasury @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+
+  @@unique([treasuryId, symbol])
+  @@index([treasuryId])
+}
+
+model Snapshot {
+  id                       String          @id @default(uuid())
+  treasuryId               String
+  createdAt                DateTime        @default(now())
+  dataMode                 String
+  totalTreasuryValue       Float
+  stableReserve            Float
+  volatileExposure         Float
+  volatileExposurePercent  Float
+  runwayMonths             Float
+  targetReserve            Float
+  reserveGap               Float
+  status                   String
+  analysis                 Json
+  treasury                 Treasury        @relation(fields: [treasuryId], references: [id], onDelete: Cascade)
+  quotes                   SnapshotQuote[]
+
+  @@index([treasuryId, createdAt])
+}
+
+model SnapshotQuote {
+  id             String   @id @default(uuid())
+  snapshotId     String
+  symbol         String
+  name           String?
+  priceUsd       Float
+  marketCapUsd   Float?
+  volume24hUsd   Float?
+  percentChange24h Float?
+  marketRank     Int?
+  lastUpdated    DateTime
+  source         String
+  snapshot       Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+}
