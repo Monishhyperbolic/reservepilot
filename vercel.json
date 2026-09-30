@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd ReservePilot-UI && npm install",
-  "buildCommand": "cd ReservePilot-UI && npm run build",
-  "outputDirectory": "ReservePilot-UI/dist"
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 }
