@@ -433,16 +433,31 @@ function useStoreData(user: User): Store {
   };
   const saveSettings = async (next: ClientSettings) => {
     if (supabase) {
-      const result = await supabase
+      const settingsPayload = {
+        id: user.id,
+        email: user.email,
+        company_name: next.companyName,
+        monthly_burn: next.monthlyBurn,
+        reserve_target_months: next.reserveTargetMonths,
+        refresh_interval: next.refreshInterval,
+      };
+      let result = await supabase
         .from("clients")
-        .upsert({
-          id: user.id,
-          email: user.email,
-          company_name: next.companyName,
-          monthly_burn: next.monthlyBurn,
-          reserve_target_months: next.reserveTargetMonths,
-          refresh_interval: next.refreshInterval,
-        });
+        .upsert(settingsPayload);
+      if (
+        result.error?.message.includes("refresh_interval") &&
+        result.error.message.includes("schema cache")
+      ) {
+        result = await supabase
+          .from("clients")
+          .upsert({
+            id: user.id,
+            email: user.email,
+            company_name: next.companyName,
+            monthly_burn: next.monthlyBurn,
+            reserve_target_months: next.reserveTargetMonths,
+          });
+      }
       if (result.error) {
         setError(result.error.message);
         return false;

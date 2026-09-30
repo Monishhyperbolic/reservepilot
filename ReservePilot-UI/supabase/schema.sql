@@ -9,6 +9,10 @@ create table if not exists public.clients (
   updated_at timestamptz not null default now()
 );
 
+-- Keep existing Supabase projects in sync with the current settings model.
+alter table public.clients
+  add column if not exists refresh_interval integer not null default 0;
+
 create table if not exists public.holdings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
