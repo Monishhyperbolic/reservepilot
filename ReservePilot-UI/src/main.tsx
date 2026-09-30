@@ -1,108 +1,5639 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, BookOpen, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, CircleHelp, Clock3, Coins, Download, ExternalLink, FileCheck2, FileClock, Filter, Gauge, Globe2, LayoutDashboard, LineChart as LineChartIcon, LockKeyhole, Menu, Moon, MoreHorizontal, Plus, RefreshCw, Search, Settings, Shield, ShieldAlert, SlidersHorizontal, Sparkles, Sun, Wallet, X, Zap } from 'lucide-react';
-import { Area, AreaChart, CartesianGrid, Cell, Line, LineChart as ReLineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
-import './style.css';
-import './settings.css';
-import './evidence.css';
-import './landing-demo.css';
-import './auth.css';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { createRoot } from "react-dom/client";
+import {
+  BrowserRouter,
+  NavLink,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  Bell,
+  BookOpen,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
+  Coins,
+  Download,
+  ExternalLink,
+  FileCheck2,
+  FileClock,
+  Filter,
+  Gauge,
+  Globe2,
+  LayoutDashboard,
+  LineChart as LineChartIcon,
+  LockKeyhole,
+  Menu,
+  Moon,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  ShieldAlert,
+  SlidersHorizontal,
+  Sparkles,
+  Sun,
+  Wallet,
+  X,
+  Zap,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart as ReLineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import "./style.css";
+import "./settings.css";
+import "./evidence.css";
+import "./landing-demo.css";
+import "./auth.css";
 const LineChart = LineChartIcon;
 
 type Holding = { id: string; symbol: string; name: string; amount: number };
-type Quote = { symbol: string; name: string; price: number; change: number; updated: string };
+type Quote = {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  updated: string;
+};
 type Snapshot = { at: string; value: number; stable: number; runway: number };
-type ClientSettings = { companyName: string; monthlyBurn: number; reserveTargetMonths: number; refreshInterval: number };
-type Store = { holdings: Holding[]; quotes: Record<string, Quote>; snapshots: Snapshot[]; settings: ClientSettings; loading: boolean; error: string; lastSync: string; refresh: () => Promise<void>; add: (holding: Omit<Holding, 'id'>) => Promise<boolean>; remove: (id: string) => Promise<void>; snapshot: () => Promise<void>; saveSettings: (settings: ClientSettings) => Promise<void> };
+type ClientSettings = {
+  companyName: string;
+  monthlyBurn: number;
+  reserveTargetMonths: number;
+  refreshInterval: number;
+};
+type Store = {
+  holdings: Holding[];
+  quotes: Record<string, Quote>;
+  snapshots: Snapshot[];
+  settings: ClientSettings;
+  loading: boolean;
+  error: string;
+  lastSync: string;
+  refresh: () => Promise<Record<string, Quote>>;
+  add: (holding: Omit<Holding, "id">) => Promise<boolean>;
+  remove: (id: string) => Promise<void>;
+  snapshot: (quoteOverrides?: Record<string, Quote>) => Promise<void>;
+  saveSettings: (settings: ClientSettings) => Promise<void>;
+};
 type User = { id: string; email?: string };
 const StoreContext = createContext<Store | null>(null);
-const finiteNumber = (value: unknown, fallback = 0) => { const number = Number(value); return Number.isFinite(number) ? number : fallback; };
-const money = (value: number) => finiteNumber(value).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
-const read = <T,>(key: string, fallback: T): T => { try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; } };
-const readHoldings = (): Holding[] => { const stored = read<Array<Partial<Holding> | null>>('reservepilot-holdings', []); return stored.filter((item): item is Partial<Holding> => Boolean(item)).map(item => ({ id: String(item.id || crypto.randomUUID()), symbol: String(item.symbol || '').trim().toUpperCase(), name: String(item.name || item.symbol || 'Unknown asset'), amount: finiteNumber(item.amount) })).filter(item => item.symbol); };
-function Logo({ className = '' }: { className?: string }) { return <img className={`reservepilot-logo ${className}`} src="/logo.png" alt="ReservePilot" />; }
-function useStore() { const store = useContext(StoreContext); if (!store) throw new Error('Store unavailable'); return store; }
-function usePortfolio() { const { holdings, quotes, settings } = useStore(); return useMemo(() => { const rows = holdings.map(item => ({ ...item, quote: quotes[item.symbol], value: item.amount * (quotes[item.symbol]?.price || 0) })); const total = rows.reduce((sum, item) => sum + item.value, 0); const stable = rows.filter(item => ['USDC', 'USDT', 'DAI'].includes(item.symbol)).reduce((sum, item) => sum + item.value, 0); return { rows, total, stable, runway: settings.monthlyBurn ? total / settings.monthlyBurn : 0, monthlyBurn: settings.monthlyBurn, targetReserve: settings.monthlyBurn * settings.reserveTargetMonths }; }, [holdings, quotes, settings]); }
+const finiteNumber = (value: unknown, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+const money = (value: number) =>
+  finiteNumber(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+const read = <T,>(key: string, fallback: T): T => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "") as T;
+  } catch {
+    return fallback;
+  }
+};
+const readHoldings = (): Holding[] => {
+  const stored = read<Array<Partial<Holding> | null>>(
+    "reservepilot-holdings",
+    [],
+  );
+  return stored
+    .filter((item): item is Partial<Holding> => Boolean(item))
+    .map((item) => ({
+      id: String(item.id || crypto.randomUUID()),
+      symbol: String(item.symbol || "")
+        .trim()
+        .toUpperCase(),
+      name: String(item.name || item.symbol || "Unknown asset"),
+      amount: finiteNumber(item.amount),
+    }))
+    .filter((item) => item.symbol);
+};
+function Logo({ className = "" }: { className?: string }) {
+  return (
+    <img
+      className={`reservepilot-logo ${className}`}
+      src="/logo.png"
+      alt="ReservePilot"
+    />
+  );
+}
+function useStore() {
+  const store = useContext(StoreContext);
+  if (!store) throw new Error("Store unavailable");
+  return store;
+}
+function usePortfolio() {
+  const { holdings, quotes, settings } = useStore();
+  return useMemo(() => {
+    const rows = holdings.map((item) => ({
+      ...item,
+      quote: quotes[item.symbol],
+      value: item.amount * (quotes[item.symbol]?.price || 0),
+    }));
+    const total = rows.reduce((sum, item) => sum + item.value, 0);
+    const stable = rows
+      .filter((item) => ["USDC", "USDT", "DAI"].includes(item.symbol))
+      .reduce((sum, item) => sum + item.value, 0);
+    return {
+      rows,
+      total,
+      stable,
+      runway: settings.monthlyBurn ? total / settings.monthlyBurn : 0,
+      monthlyBurn: settings.monthlyBurn,
+      targetReserve: settings.monthlyBurn * settings.reserveTargetMonths,
+    };
+  }, [holdings, quotes, settings]);
+}
 
 const nav = [
-  { group:'WORKSPACE', links:[['/overview','Executive cockpit',LayoutDashboard],['/treasury','Treasury setup',Wallet],['/market','Market',Globe2],['/market-overview','Market overview',LineChartIcon],['/reserve-plan','Reserve plan',Shield],['/stress-test','Stress simulator',Activity]] },
-  { group:'INTELLIGENCE', links:[['/history','Historical snapshots',FileClock],['/evidence','Evidence report',FileCheck2]] },
-  { group:'SYSTEM', links:[['/settings','Settings & oracles',Settings]] },
+  {
+    group: "WORKSPACE",
+    links: [
+      ["/overview", "Executive cockpit", LayoutDashboard],
+      ["/treasury", "Treasury setup", Wallet],
+      ["/market", "Market", Globe2],
+      ["/market-overview", "Market overview", LineChartIcon],
+      ["/reserve-plan", "Reserve plan", Shield],
+      ["/stress-test", "Stress simulator", Activity],
+    ],
+  },
+  {
+    group: "INTELLIGENCE",
+    links: [
+      ["/history", "Historical snapshots", FileClock],
+      ["/evidence", "Evidence report", FileCheck2],
+    ],
+  },
+  { group: "SYSTEM", links: [["/settings", "Settings & oracles", Settings]] },
 ] as const;
-const screenTitles: Record<string, string> = { '/welcome': 'Welcome', '/overview': 'Executive Cockpit', '/treasury': 'Treasury Setup', '/token': 'Add Asset', '/market': 'Market', '/market-overview': 'Market Overview', '/reserve-plan': 'Reserve Plan', '/stress-test': 'Stress Simulator', '/history': 'Historical Snapshots', '/evidence': 'Evidence Report', '/settings': 'Settings' };
+const screenTitles: Record<string, string> = {
+  "/welcome": "Welcome",
+  "/overview": "Executive Cockpit",
+  "/treasury": "Treasury Setup",
+  "/token": "Add Asset",
+  "/market": "Market",
+  "/market-overview": "Market Overview",
+  "/reserve-plan": "Reserve Plan",
+  "/stress-test": "Stress Simulator",
+  "/history": "Historical Snapshots",
+  "/evidence": "Evidence Report",
+  "/settings": "Settings",
+};
 function useStoreData(user: User): Store {
   const [holdings, setHoldings] = useState<Holding[]>(readHoldings);
-  const [quotes, setQuotes] = useState<Record<string, Quote>>({}); const [snapshots, setSnapshots] = useState<Snapshot[]>(() => read('reservepilot-snapshots', []));
-  const [settings, setSettings] = useState<ClientSettings>({ companyName: 'My treasury', monthlyBurn: 35000, reserveTargetMonths: 3, refreshInterval: 0 });
-  const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [lastSync, setLastSync] = useState('Never');
-  useEffect(() => { let active = true; const load = async () => { if (!supabase) return; const [holdingResult, snapshotResult, clientResult] = await Promise.all([supabase.from('holdings').select('*').eq('user_id', user.id).order('created_at'), supabase.from('snapshots').select('*').eq('user_id', user.id).order('created_at'), supabase.from('clients').select('*').eq('id', user.id).maybeSingle()]); if (!active) return; if (holdingResult.error || snapshotResult.error || clientResult.error) { setError(holdingResult.error?.message || snapshotResult.error?.message || clientResult.error?.message || 'Unable to load Supabase data.'); return; } setHoldings((holdingResult.data || []).map(item => ({ id: String(item.id), symbol: String(item.symbol || '').trim().toUpperCase(), name: String(item.name || item.symbol || 'Unknown asset'), amount: finiteNumber(item.amount) })).filter(item => item.symbol)); setSnapshots((snapshotResult.data || []).map(item => ({ at: String(item.created_at), value: finiteNumber(item.value), stable: finiteNumber(item.stable), runway: finiteNumber(item.runway) }))); if (clientResult.data) setSettings({ companyName: String(clientResult.data.company_name || 'My treasury'), monthlyBurn: finiteNumber(clientResult.data.monthly_burn, 35000), reserveTargetMonths: finiteNumber(clientResult.data.reserve_target_months, 3), refreshInterval: finiteNumber(clientResult.data.refresh_interval) }); }; void load(); return () => { active = false; }; }, [user.id]);
-  useEffect(() => { localStorage.setItem('reservepilot-holdings', JSON.stringify(holdings)); }, [holdings]); useEffect(() => { localStorage.setItem('reservepilot-snapshots', JSON.stringify(snapshots)); }, [snapshots]);
-  const refresh = async () => { if (!holdings.length) { setError('Add an asset before requesting live market data.'); return; } setLoading(true); setError(''); try { const symbols = [...new Set(holdings.map(item => item.symbol))].join(','); const response = await fetch(`/api/quotes?symbol=${encodeURIComponent(symbols)}&convert=USD`); const responseText = await response.text(); let body: any; try { body = JSON.parse(responseText); } catch { throw new Error(response.ok ? 'CoinMarketCap returned an invalid response.' : `Quote service returned HTTP ${response.status}.`); } if (!response.ok) throw new Error(body?.status?.error_message || 'CoinMarketCap request failed.'); const next: Record<string, Quote> = {}; Object.values(body.data || {}).forEach((item: any) => { const symbol = String(item.symbol || '').toUpperCase(); if (!symbol) return; next[symbol] = { symbol, name: String(item.name || symbol), price: finiteNumber(item.quote?.USD?.price), change: finiteNumber(item.quote?.USD?.percent_change_24h), updated: String(item.quote?.USD?.last_updated || '') }; }); setQuotes(next); setLastSync(new Date().toISOString()); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to reach CoinMarketCap.'); } finally { setLoading(false); } };
-  useEffect(() => { void refresh(); }, [holdings.length]);
-  useEffect(() => { if (!settings.refreshInterval) return; const timer = window.setInterval(() => void refresh(), settings.refreshInterval * 60000); return () => window.clearInterval(timer); }, [settings.refreshInterval, holdings.length]);
-  const add = async (holding: Omit<Holding, 'id'>) => { const next = { ...holding, symbol: holding.symbol.toUpperCase(), id: crypto.randomUUID() }; if (supabase) { const result = await supabase.from('holdings').insert({ user_id: user.id, symbol: next.symbol, name: next.name, amount: next.amount }).select().single(); if (result.error) { setError(result.error.message); return false; } next.id = result.data.id; } setHoldings(current => [...current, next]); return true; };
-  const remove = async (id: string) => { if (supabase) { const result = await supabase.from('holdings').delete().eq('id', id).eq('user_id', user.id); if (result.error) { setError(result.error.message); return; } } setHoldings(current => current.filter(item => item.id !== id)); };
-  const snapshot = async () => { const rows = holdings.map(item => ({ ...item, value: item.amount * (quotes[item.symbol]?.price || 0) })); const value = rows.reduce((sum, item) => sum + item.value, 0); const stable = rows.filter(item => ['USDC', 'USDT', 'DAI'].includes(item.symbol)).reduce((sum, item) => sum + item.value, 0); const next = { at: new Date().toISOString(), value, stable, runway: settings.monthlyBurn ? value / settings.monthlyBurn : 0 }; if (supabase) { const result = await supabase.from('snapshots').insert({ user_id: user.id, value, stable, runway: next.runway }); if (result.error) { setError(result.error.message); return; } } setSnapshots(current => [...current, next].slice(-90)); };
-  const saveSettings = async (next: ClientSettings) => { if (supabase) { const result = await supabase.from('clients').upsert({ id: user.id, email: user.email, company_name: next.companyName, monthly_burn: next.monthlyBurn, reserve_target_months: next.reserveTargetMonths, refresh_interval: next.refreshInterval }); if (result.error) { setError(result.error.message); return; } } setSettings(next); };
-  return { holdings, quotes, snapshots, settings, loading, error, lastSync, refresh, add, remove, snapshot, saveSettings };
+  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  const [snapshots, setSnapshots] = useState<Snapshot[]>(() =>
+    read("reservepilot-snapshots", []),
+  );
+  const [settings, setSettings] = useState<ClientSettings>({
+    companyName: "My treasury",
+    monthlyBurn: 35000,
+    reserveTargetMonths: 3,
+    refreshInterval: 0,
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState("Never");
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!supabase) return;
+      const [holdingResult, snapshotResult, clientResult] = await Promise.all([
+        supabase
+          .from("holdings")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at"),
+        supabase
+          .from("snapshots")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at"),
+        supabase.from("clients").select("*").eq("id", user.id).maybeSingle(),
+      ]);
+      if (!active) return;
+      if (holdingResult.error || snapshotResult.error || clientResult.error) {
+        setError(
+          holdingResult.error?.message ||
+            snapshotResult.error?.message ||
+            clientResult.error?.message ||
+            "Unable to load Supabase data.",
+        );
+        return;
+      }
+      setHoldings(
+        (holdingResult.data || [])
+          .map((item) => ({
+            id: String(item.id),
+            symbol: String(item.symbol || "")
+              .trim()
+              .toUpperCase(),
+            name: String(item.name || item.symbol || "Unknown asset"),
+            amount: finiteNumber(item.amount),
+          }))
+          .filter((item) => item.symbol),
+      );
+      setSnapshots(
+        (snapshotResult.data || []).map((item) => ({
+          at: String(item.created_at),
+          value: finiteNumber(item.value),
+          stable: finiteNumber(item.stable),
+          runway: finiteNumber(item.runway),
+        })),
+      );
+      if (clientResult.data)
+        setSettings({
+          companyName: String(clientResult.data.company_name || "My treasury"),
+          monthlyBurn: finiteNumber(clientResult.data.monthly_burn, 35000),
+          reserveTargetMonths: finiteNumber(
+            clientResult.data.reserve_target_months,
+            3,
+          ),
+          refreshInterval: finiteNumber(clientResult.data.refresh_interval),
+        });
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
+  useEffect(() => {
+    localStorage.setItem("reservepilot-holdings", JSON.stringify(holdings));
+  }, [holdings]);
+  useEffect(() => {
+    localStorage.setItem("reservepilot-snapshots", JSON.stringify(snapshots));
+  }, [snapshots]);
+  const refresh = async () => {
+    if (!holdings.length) {
+      setError("Add an asset before requesting live market data.");
+      return {};
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const symbols = [...new Set(holdings.map((item) => item.symbol))].join(
+        ",",
+      );
+      const response = await fetch(
+        `/api/quotes?symbol=${encodeURIComponent(symbols)}&convert=USD`,
+      );
+      const responseText = await response.text();
+      let body: any;
+      try {
+        body = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          response.ok
+            ? "CoinMarketCap returned an invalid response."
+            : `Quote service returned HTTP ${response.status}.`,
+        );
+      }
+      if (!response.ok)
+        throw new Error(
+          body?.status?.error_message || "CoinMarketCap request failed.",
+        );
+      const next: Record<string, Quote> = {};
+      Object.values(body.data || {}).forEach((item: any) => {
+        const symbol = String(item.symbol || "").toUpperCase();
+        if (!symbol) return;
+        next[symbol] = {
+          symbol,
+          name: String(item.name || symbol),
+          price: finiteNumber(item.quote?.USD?.price),
+          change: finiteNumber(item.quote?.USD?.percent_change_24h),
+          updated: String(item.quote?.USD?.last_updated || ""),
+        };
+      });
+      setQuotes(next);
+      setLastSync(new Date().toISOString());
+      return next;
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to reach CoinMarketCap.",
+      );
+      return {};
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void refresh();
+  }, [holdings.length]);
+  useEffect(() => {
+    if (!settings.refreshInterval) return;
+    const timer = window.setInterval(
+      () => void refresh(),
+      settings.refreshInterval * 60000,
+    );
+    return () => window.clearInterval(timer);
+  }, [settings.refreshInterval, holdings.length]);
+  const add = async (holding: Omit<Holding, "id">) => {
+    const next = {
+      ...holding,
+      symbol: holding.symbol.toUpperCase(),
+      id: crypto.randomUUID(),
+    };
+    if (supabase) {
+      const result = await supabase
+        .from("holdings")
+        .insert({
+          user_id: user.id,
+          symbol: next.symbol,
+          name: next.name,
+          amount: next.amount,
+        })
+        .select()
+        .single();
+      if (result.error) {
+        setError(result.error.message);
+        return false;
+      }
+      next.id = result.data.id;
+    }
+    setHoldings((current) => [...current, next]);
+    return true;
+  };
+  const remove = async (id: string) => {
+    if (supabase) {
+      const result = await supabase
+        .from("holdings")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+    }
+    setHoldings((current) => current.filter((item) => item.id !== id));
+  };
+  const snapshot = async (quoteOverrides: Record<string, Quote> = quotes) => {
+    const rows = holdings.map((item) => ({
+      ...item,
+      value: item.amount * (quoteOverrides[item.symbol]?.price || 0),
+    }));
+    const value = rows.reduce((sum, item) => sum + item.value, 0);
+    const stable = rows
+      .filter((item) => ["USDC", "USDT", "DAI"].includes(item.symbol))
+      .reduce((sum, item) => sum + item.value, 0);
+    const next = {
+      at: new Date().toISOString(),
+      value,
+      stable,
+      runway: settings.monthlyBurn ? value / settings.monthlyBurn : 0,
+    };
+    if (supabase) {
+      const result = await supabase
+        .from("snapshots")
+        .insert({ user_id: user.id, value, stable, runway: next.runway });
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+    }
+    setSnapshots((current) => [...current, next].slice(-90));
+  };
+  const saveSettings = async (next: ClientSettings) => {
+    if (supabase) {
+      const result = await supabase
+        .from("clients")
+        .upsert({
+          id: user.id,
+          email: user.email,
+          company_name: next.companyName,
+          monthly_burn: next.monthlyBurn,
+          reserve_target_months: next.reserveTargetMonths,
+          refresh_interval: next.refreshInterval,
+        });
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+    }
+    setSettings(next);
+  };
+  return {
+    holdings,
+    quotes,
+    snapshots,
+    settings,
+    loading,
+    error,
+    lastSync,
+    refresh,
+    add,
+    remove,
+    snapshot,
+    saveSettings,
+  };
 }
-const tokens=[{symbol:'USDC',name:'USD Coin',amount:'40,000.00',price:'$1.00',value:'$40,000.00',change:'+0.01%',tone:'cyan',icon:'U'},{symbol:'ETH',name:'Ethereum',amount:'18.00',price:'$3,420.15',value:'$61,562.70',change:'+2.84%',tone:'purple',icon:'Ξ'},{symbol:'BTC',name:'Bitcoin',amount:'0.75',price:'$78,477.17',value:'$58,857.88',change:'−1.24%',tone:'orange',icon:'₿'}];
-const chartData=[{d:'Apr 01',v:132},{d:'Apr 08',v:136},{d:'Apr 15',v:134},{d:'Apr 22',v:145},{d:'Apr 29',v:141},{d:'May 06',v:153},{d:'May 13',v:149},{d:'May 20',v:165},{d:'May 27',v:171},{d:'Jun 03',v:180}];
-function Badge({children,tone='green',pulse=false}:{children:React.ReactNode;tone?:string;pulse?:boolean}){return <span className={`badge ${tone}`}>{pulse&&<i className="pulse"/>}{children}</span>}
-function Button({children,kind='quiet',onClick,className='',type='button'}:{children:React.ReactNode;kind?:string;onClick?:()=>void;className?:string;type?:'button'|'submit'}){return <button type={type} onClick={onClick} className={`button ${kind} ${className}`}>{children}</button>}
-function Panel({children,title,sub,action,className=''}:{children:React.ReactNode;title?:string;sub?:string;action?:React.ReactNode;className?:string}){return <section className={`panel ${className}`}>{(title||action)&&<div className="panel-head"><div>{title&&<h2>{title}</h2>}{sub&&<p>{sub}</p>}</div>{action}</div>}{children}</section>}
-function Metric({label,value,detail,delta,tone='green',icon:Icon=Activity}:{label:string;value:string;detail:string;delta?:string;tone?:string;icon?:any}){return <div className="metric"><div className="metric-top"><span>{label}</span><Icon size={16} className="muted"/></div><strong>{value}</strong><div className="metric-bottom"><span className={tone}>{delta}</span><span>{detail}</span></div></div>}
-function Layout(){const location=useLocation();const [mobile,setMobile]=useState(false);const [scenario,setScenario]=useState('Baseline');const title=screenTitles[location.pathname]||'Executive Cockpit';return <div className="app-shell"><aside className={`sidebar ${mobile?'show':''}`}><div className="brand"><div className="brand-mark"><Shield size={21}/></div><span>reserve<span className="brand-light">pilot</span><small>TREASURY INTELLIGENCE</small></span><button className="mobile-close" onClick={()=>setMobile(false)}><X size={18}/></button></div><div className="org"><div className="org-icon">O</div><div><b>Orbit Labs</b><small>Institutional treasury</small></div><ChevronDown size={15}/></div><div className="nav-wrap">{nav.map(group=><div className="nav-group" key={group.group}><div className="nav-label">{group.group}</div>{group.links.map(([to,label,Icon])=><NavLink onClick={()=>setMobile(false)} key={to} to={to} className={({isActive})=>`nav-link ${isActive?'active':''}`}><Icon size={17}/><span>{label}</span>{to==='/stress-test'&&<span className="nav-count">3</span>}</NavLink>)}</div>)}<div className="nav-label spaces-label">YOUR WORKSPACES</div><div className="workspace-link"><span className="workspace-dot blue-dot"/>Main treasury <MoreHorizontal size={15}/></div><div className="workspace-link"><span className="workspace-dot green-dot"/>Foundation DAO <MoreHorizontal size={15}/></div></div><div className="sidebar-bottom"><div className="oracle-mini"><div className="oracle-top"><span className="pulse"/> ORACLE STATUS <Badge tone="green">LIVE</Badge></div><b>CoinMarketCap API</b><small><span className="green">●</span> All systems operational · 120ms</small></div><a className="documentation"><BookOpen size={15}/> Documentation <ExternalLink size={12}/></a><div className="profile"><div className="avatar">AR</div><div><b>Alex Rivera</b><small>Admin · Multi-sig</small></div><MoreHorizontal size={17}/></div></div></aside><div className="main-shell"><header className="topbar"><button className="mobile-menu" onClick={()=>setMobile(true)}><Menu size={19}/></button><div className="crumb"><span>Orbit Labs</span><ChevronRight size={13}/><b>{title}</b></div><div className="top-actions"><div className="scenario-picker"><span>Scenario</span>{['Baseline','Depeg 2024','Bear run'].map(x=><button key={x} onClick={()=>setScenario(x)} className={scenario===x?'selected':''}>{x}</button>)}</div><button className="icon-button" title="Search"><Search size={17}/></button><button className="icon-button notify" title="Notifications"><Bell size={17}/><i/></button><div className="top-avatar">AR</div></div></header><main className="content"><Routes><Route path="/" element={<Navigate to="/welcome" replace/>}/><Route path="/welcome" element={<Welcome/>}/><Route path="/overview" element={<Dashboard/>}/><Route path="/treasury" element={<Treasury/>}/><Route path="/token" element={<TokenPage/>}/><Route path="/market" element={<Market/>}/><Route path="/reserve-plan" element={<ReservePlan/>}/><Route path="/stress-test" element={<Stress/>}/><Route path="/history" element={<History/>}/><Route path="/evidence" element={<Evidence/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="/empty" element={<Empty/>}/><Route path="/stale-data" element={<Stale/>}/><Route path="*" element={<Navigate to="/overview" replace/>}/></Routes></main></div></div>}
-function PageHead({eyebrow,title,desc,children}:{eyebrow?:string;title:string;desc:string;children?:React.ReactNode}){return <div className="page-head"><div><div className="eyebrow">{eyebrow||'ORBIT LABS  /  TREASURY INTELLIGENCE'}</div><h1>{title}</h1><p>{desc}</p></div><div className="page-actions">{children}</div></div>}
-function Dashboard(){return <><PageHead eyebrow="TUESDAY, JUNE 04, 2024  ·  MAIN TREASURY" title="Executive cockpit" desc="A clear view of your treasury health, runway, and reserve position."><Badge tone="cyan" pulse>LIVE DATA</Badge><Button><RefreshCw size={15}/> Refresh data</Button><NavLink to="/treasury" className="button primary"><SlidersHorizontal size={15}/> Edit treasury</NavLink></PageHead><div className="callout success-callout"><div className="callout-icon"><Shield size={19}/></div><div className="callout-copy"><div><b>Solvency target met</b><span className="callout-divider"/><Badge tone="amber">74% VOLATILE EXPOSURE</Badge></div><p>Your treasury is covered for <strong>5.15 months</strong> against a 3-month target. Stablecoin reserves alone cover 1.14 months of operating costs.</p></div><div className="callout-actions"><NavLink className="button" to="/stress-test">Run stress test <ArrowRight size={14}/></NavLink><NavLink className="button primary" to="/reserve-plan"><Shield size={15}/> Build reserve plan</NavLink></div></div><div className="metric-grid"><Metric label="TOTAL TREASURY VALUE" value="$180,420.58" detail="vs. previous snapshot" delta="↗ 2.4%" icon={Wallet}/><Metric label="MONTHLY OPERATING BURN" value="$35,000" detail="Next payroll in 12 days" delta="Monthly" tone="cyan" icon={CalendarClock}/><Metric label="CURRENT RUNWAY" value="5.15 mo" detail="Target: 3.00 months" delta="Covered" icon={Gauge}/><Metric label="STABLE RESERVE RATIO" value="31.2%" detail="Target: 40%" delta="Below target" tone="amber" icon={Coins}/></div><div className="dashboard-grid"><Panel title="Treasury performance" sub="Portfolio value · USD" action={<select className="select"><option>Last 90 days</option><option>30 days</option><option>1 year</option></select>}><div className="chart-legend"><span><i className="legend-blue"/> Treasury value</span><span className="mono">$180,420.58 <b className="green">+12.6%</b></span></div><div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{top:10,right:8,left:-16,bottom:0}}><defs><linearGradient id="blueFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3B82F6" stopOpacity={.22}/><stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#1e293b" vertical={false}/><XAxis dataKey="d" tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}}/><YAxis tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}} tickFormatter={v=>`$${v}k`}/><Tooltip contentStyle={{background:'#131b2e',border:'1px solid #334155',borderRadius:6,color:'#e2e8f0'}} formatter={(v:any)=>[`$${v}k`,'Portfolio value']}/><Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fill="url(#blueFill)"/></AreaChart></ResponsiveContainer></div></Panel><Panel title="Runway coverage" sub="Available treasury against monthly burn"><div className="runway-visual"><div className="runway-number">5.15<span> months</span></div><div className="runway-track"><div style={{width:'86%'}}/></div><div className="runway-scale"><span>0</span><span className="target-mark">3 mo safety target</span><span>6 mo</span></div></div><div className="runway-breakdown"><div><span><i className="dot dot-blue"/> High-beta assets</span><b className="mono">4.01 mo</b></div><div><span><i className="dot dot-cyan"/> Stable reserves</span><b className="mono">1.14 mo</b></div><div><span><i className="dot dot-line"/> Minimum target</span><b className="mono">3.00 mo</b></div></div></Panel></div><Panel title="Asset allocation" sub="Current holdings · ranked by portfolio value" action={<NavLink className="text-link" to="/treasury">View all assets <ArrowRight size={14}/></NavLink>}><AssetTable compact/></Panel><div className="footer-note"><span><span className="pulse"/> ORACLE ACTIVE</span><span>Last sync 2 minutes ago</span><span>Data provided by CoinMarketCap</span><NavLink to="/evidence">View audit trail <ArrowRight size={12}/></NavLink></div></>}
-function AssetTable({compact=false}:{compact?:boolean}){return <div className="table-scroll"><table><thead><tr><th>ASSET</th><th>QUANTITY</th><th>PRICE</th><th>24H CHANGE</th><th className="right">VALUE</th><th>ALLOCATION</th></tr></thead><tbody>{tokens.map((x,i)=><tr key={x.symbol}><td><div className="asset-cell"><span className={`coin ${x.tone}`}>{x.icon}</span><div><b>{x.symbol}</b><small>{x.name}</small></div></div></td><td className="mono">{x.amount}</td><td className="mono">{x.price}</td><td className={`mono ${i===2?'red':'green'}`}>{x.change}</td><td className="mono right">{x.value}</td><td><div className="allocation"><span><i style={{width:['22%','34%','33%'][i]}}/></span><small>{['22.2%','34.1%','32.6%'][i]}</small></div></td></tr>)}</tbody></table></div>}
-function Treasury(){const [tab,setTab]=useState('Holdings');return <><PageHead title="Treasury setup" desc="Manage asset holdings, operating costs, and solvency parameters."><Button><Download size={15}/> Export</Button><NavLink className="button primary" to="/token"><Plus size={15}/> Add asset</NavLink></PageHead><div className="tabs">{['Holdings','Operating costs','Risk parameters'].map(t=><button onClick={()=>setTab(t)} className={tab===t?'tab-active':''} key={t}>{t}</button>)}</div>{tab==='Holdings'?<><div className="metric-grid three"><Metric label="TOTAL PORTFOLIO VALUE" value="$180,420.58" detail="3 tracked assets" delta="↗ 2.4%" icon={Wallet}/><Metric label="STABLECOIN RESERVES" value="$40,000.00" detail="22.2% of portfolio" delta="1 asset" tone="cyan" icon={Coins}/><Metric label="TARGET RUNWAY" value="3.0 months" detail="Current: 5.15 months" delta="On target" icon={Gauge}/></div><Panel title="Treasury holdings" sub="Configure the assets held in your treasury" action={<NavLink to="/token" className="button primary"><Plus size={15}/> Add asset</NavLink>}><AssetTable/><div className="table-foot"><span>Showing 3 assets</span><span>Prices updated 2m ago <RefreshCw size={12}/></span></div></Panel><Panel title="Treasury profile" sub="The assumptions used in your runway calculations"><div className="form-grid"><label>Monthly operating expenses<div className="input-wrap"><span>$</span><input defaultValue="35,000"/></div></label><label>Minimum reserve target<div className="input-wrap"><input defaultValue="3"/><span>months</span></div></label><label>Reporting currency<select className="field"><option>USD — US Dollar</option></select></label></div><div className="panel-foot"><span className="muted">Last saved just now</span><Button kind="primary">Save changes</Button></div></Panel></>:<ProfileTab tab={tab}/>}</>}
-function ProfileTab({tab}:{tab:string}){return <Panel title={tab==='Operating costs'?'Monthly operating costs':'Risk parameters'} sub={tab==='Operating costs'?'Set expenses used to calculate treasury runway.':'Define thresholds that trigger risk alerts.'}><div className="form-grid"><label>{tab==='Operating costs'?'Monthly burn rate':'Minimum runway threshold'}<div className="input-wrap"><span>{tab==='Operating costs'?'$':''}</span><input defaultValue={tab==='Operating costs'?'35,000':'3.0'}/><span>{tab==='Operating costs'?'USD':'months'}</span></div></label><label>Alert threshold<div className="input-wrap"><input defaultValue="120"/><span>% of monthly burn</span></div></label><label>Review cadence<select className="field"><option>Weekly</option><option>Daily</option><option>Monthly</option></select></label></div><div className="panel-foot"><span className="muted">Changes are saved to this workspace.</span><Button kind="primary">Save changes</Button></div></Panel>}
-function TokenPage(){return <><PageHead title="Add custom token" desc="Register an asset for treasury tracking."><NavLink className="button" to="/treasury"><X size={15}/> Close</NavLink></PageHead><div className="modal-card"><div className="modal-title"><div className="callout-icon"><Coins size={20}/></div><div><h2>Add custom token</h2><p>Enter the token's contract details to add it to your holdings.</p></div></div><label>Network<select className="field"><option>Ethereum Mainnet</option><option>Arbitrum One</option><option>Base</option><option>Optimism</option></select></label><label>Contract address<div className="input-wrap"><input placeholder="0x…"/><button className="text-link">Paste</button></div><small className="field-help">Enter a valid token contract address.</small></label><div className="form-grid"><label>Token symbol<input className="field" placeholder="e.g. WETH"/></label><label>Token decimals<input className="field" placeholder="18"/></label></div><div className="verify-note"><LockKeyhole size={16}/><span>Token metadata is validated locally before adding it.</span></div><div className="panel-foot"><NavLink to="/treasury" className="button">Cancel</NavLink><Button kind="primary"><Plus size={15}/> Add token</Button></div></div></>}
-function Market(){return <><PageHead title="Market overview" desc="Market telemetry for every asset in your treasury."><Badge tone="cyan" pulse>MARKET FEED LIVE</Badge><Button><RefreshCw size={15}/> Refresh</Button></PageHead><div className="metric-grid"><Metric label="TOTAL MARKET VALUE" value="$180,420.58" detail="Across 3 treasury assets" delta="↗ 2.4% 24h" icon={Globe2}/><Metric label="MARKET VOLATILITY" value="Moderate" detail="30-day portfolio index" delta="Within limits" tone="cyan" icon={Activity}/><Metric label="STABLECOIN PEG" value="$1.0001" detail="USDC · +0.01% deviation" delta="Healthy" icon={Shield}/><Metric label="DATA FRESHNESS" value="120 ms" detail="CoinMarketCap oracle" delta="Operational" tone="cyan" icon={Zap}/></div><Panel title="Market performance" sub="Portfolio indexed performance · 90 days" action={<select className="select"><option>USD</option><option>Indexed</option></select>}><div className="chart big-chart"><ResponsiveContainer width="100%" height="100%"><ReLineChart data={chartData}><CartesianGrid stroke="#1e293b" vertical={false}/><XAxis dataKey="d" tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}}/><YAxis tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}}/><Tooltip contentStyle={{background:'#131b2e',border:'1px solid #334155'}}/><Line type="monotone" dataKey="v" stroke="#06b6d4" strokeWidth={2} dot={false}/></ReLineChart></ResponsiveContainer></div></Panel><Panel title="Tracked assets" sub="Live prices and daily movement"><AssetTable/></Panel></>}
-function ReservePlan(){return <><PageHead title="Reserve plan roadmap" desc="A disciplined path toward your treasury's target reserve allocation."><Badge tone="amber">PLAN IN PROGRESS</Badge><Button><Download size={15}/> Export plan</Button><Button kind="primary"><Sparkles size={15}/> Recalculate plan</Button></PageHead><div className="callout plan-callout"><div className="callout-icon amber-icon"><ShieldAlert size={20}/></div><div className="callout-copy"><div><b>Reserve coverage is below your target</b></div><p>Your treasury currently has <strong>1.14 months</strong> of stablecoin runway. Increase stable reserves by <strong>$65,000</strong> to reach the 3-month stable reserve goal.</p></div></div><div className="metric-grid three"><Metric label="CURRENT STABLE RESERVES" value="$40,000" detail="22.2% of treasury" delta="Current" tone="amber" icon={Coins}/><Metric label="TARGET STABLE RESERVES" value="$105,000" detail="3 months of operating costs" delta="Target" tone="cyan" icon={Shield}/><Metric label="REMAINING TO TARGET" value="$65,000" detail="Recommended over 90 days" delta="36.0% gap" tone="amber" icon={ArrowUpRight}/></div><Panel title="Rebalancing roadmap" sub="Suggested steps to achieve your stable reserve target"><div className="roadmap"><div className="roadmap-row"><span className="step done"><Check size={15}/></span><div><b>Establish target reserve level</b><p>Set stable reserve goal at 3 months of operating expenses</p></div><div className="step-value"><Badge>COMPLETE</Badge><b className="mono">$105,000</b></div></div><div className="roadmap-row"><span className="step current">02</span><div><b>Build stablecoin reserves</b><p>Allocate $21,667 per month from liquid treasury assets</p></div><div className="step-value"><Badge tone="amber">IN PROGRESS</Badge><b className="mono">$40,000 / $105,000</b></div></div><div className="roadmap-row"><span className="step">03</span><div><b>Review allocation and confirm</b><p>Reassess treasury risk profile when target is reached</p></div><div className="step-value"><span className="muted">90 days</span><b className="mono">Pending</b></div></div></div><div className="progress-label"><span>ROADMAP PROGRESS</span><b className="mono">38%</b></div><div className="progress-track"><i style={{width:'38%'}}/></div></Panel><div className="footer-note"><span>Plan generated June 04, 2024</span><span>Based on current holdings and $35,000 monthly burn</span><span>For planning purposes</span></div></>}
-function Stress(){const [shock,setShock]=useState(25);return <><PageHead title="Stress test simulator" desc="Model adverse market scenarios and assess their impact on treasury runway."><Badge tone="cyan">SCENARIO MODEL</Badge><Button><FileClock size={15}/> Scenario history</Button></PageHead><div className="stress-grid"><div><Panel title="Configure market shock" sub="Set asset price shocks for your simulation"><div className="scenario-row"><span className="scenario-coin orange">₿</span><div className="scenario-asset"><b>Bitcoin <small>BTC</small></b><span>Current $78,477.17</span></div><strong className="mono red">−{shock}%</strong></div><input className="range" type="range" min="0" max="80" value={shock} onChange={e=>setShock(+e.target.value)}/><div className="range-labels"><span>0%</span><span className="range-value">−{shock}% shock</span><span>−80%</span></div><div className="scenario-row"><span className="scenario-coin purple">Ξ</span><div className="scenario-asset"><b>Ethereum <small>ETH</small></b><span>Current $3,420.15</span></div><strong className="mono red">−{Math.round(shock*1.2)}%</strong></div><input className="range cyan-range" type="range" min="0" max="80" value={Math.round(shock*1.2)} onChange={e=>setShock(Math.min(66,Math.round(+e.target.value/1.2)))}/><div className="scenario-row"><span className="scenario-coin cyan">U</span><div className="scenario-asset"><b>USDC <small>Stablecoin</small></b><span>Current $1.0001</span></div><strong className="mono amber">−2%</strong></div><label className="toggle-line"><span>Include stablecoin depeg scenario</span><input type="checkbox" defaultChecked/><i/></label><Button kind="primary" className="run-test"><Zap size={15}/> Run stress test</Button></Panel><Panel title="Preset scenarios" sub="Start with a historical market event"><div className="preset-list">{[['2022 Bear Market','Broad market drawdown','−65%'],['USDC Depeg','Stablecoin liquidity event','−8%'],['Custom Scenario','Your saved stress profile','Edit']].map(([t,s,v])=><button className="preset" key={t}><span><b>{t}</b><small>{s}</small></span><span className="mono red">{v}</span><ChevronRight size={15}/></button>)}</div></Panel></div><div><Panel title="Projected impact" sub="Estimated treasury position after simulated shock"><div className="impact-number">$<span>{(180420.58-120420.58*shock/100).toLocaleString('en-US',{maximumFractionDigits:0})}</span><small>−{(120420.58*shock/100).toLocaleString('en-US',{maximumFractionDigits:0})} ({(120420.58*shock/180420.58).toFixed(1)}%)</small></div><div className="chart impact-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData}><defs><linearGradient id="redFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={.24}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#1e293b" vertical={false}/><Area type="monotone" dataKey="v" stroke="#ef4444" strokeWidth={2} fill="url(#redFill)"/></AreaChart></ResponsiveContainer></div><div className="impact-kpis"><div><span>RUNWAY AFTER SHOCK</span><b className="amber">3.44 mo</b></div><div><span>STABLE RUNWAY</span><b>1.14 mo</b></div><div><span>RESERVE TARGET</span><b>3.00 mo</b></div></div><div className="callout warn-small"><AlertTriangle size={17}/><p>Treasury remains above the minimum runway threshold, but has less margin against further volatility.</p></div><Button><Download size={15}/> Export simulation</Button></Panel></div></div></>}
-function History(){return <><PageHead title="Historical snapshots" desc="Review treasury performance and key solvency metrics over time."><Button><Filter size={15}/> Filters</Button><Button kind="primary"><Plus size={15}/> Create snapshot</Button></PageHead><div className="metric-grid three"><Metric label="SNAPSHOTS RECORDED" value="24" detail="Since Mar 01, 2024" delta="Weekly" icon={FileClock}/><Metric label="VALUE CHANGE" value="+$32,180" detail="Since first snapshot" delta="↗ 21.7%" icon={LineChart}/><Metric label="RUNWAY TREND" value="+0.8 mo" detail="Over the last 90 days" delta="Improving" icon={Gauge}/></div><Panel title="Portfolio value over time" sub="Historical portfolio valuation and reserve coverage" action={<select className="select"><option>Last 90 days</option><option>Last 30 days</option><option>Year to date</option></select>}><div className="chart big-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData}><defs><linearGradient id="historyFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={.18}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#1e293b" vertical={false}/><XAxis dataKey="d" tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}}/><YAxis tickLine={false} axisLine={false} tick={{fill:'#64748b',fontSize:11}} tickFormatter={v=>`$${v}k`}/><Tooltip contentStyle={{background:'#131b2e',border:'1px solid #334155'}}/><Area dataKey="v" type="monotone" stroke="#06b6d4" strokeWidth={2} fill="url(#historyFill)"/></AreaChart></ResponsiveContainer></div></Panel><Panel title="Snapshot history" sub="A point-in-time record of your treasury"><div className="table-scroll"><table><thead><tr><th>DATE & TIME</th><th>PORTFOLIO VALUE</th><th>RUNWAY</th><th>STABLE RESERVE</th><th>STATUS</th><th/></tr></thead><tbody>{['Jun 04, 2024 · 09:42','May 28, 2024 · 09:30','May 21, 2024 · 09:31','May 14, 2024 · 09:28','May 07, 2024 · 09:29'].map((d,i)=><tr key={d}><td>{d}</td><td className="mono">{['$180,420.58','$176,192.18','$169,822.40','$171,904.92','$162,101.44'][i]}</td><td className="mono">{['5.15','5.04','4.85','4.91','4.63'][i]} mo</td><td className="mono">{i===0?'$40,000':'$38,000'}</td><td><Badge>{i===0?'LATEST':'RECORDED'}</Badge></td><td><button className="icon-button"><MoreHorizontal size={16}/></button></td></tr>)}</tbody></table></div></Panel></>}
-function Evidence(){return <><PageHead title="Evidence report & audit trail" desc="A transparent, exportable record of treasury data and system activity."><Button><CalendarClock size={15}/> Jun 01 – Jun 04, 2024 <ChevronDown size={13}/></Button><Button kind="primary"><Download size={15}/> Export report</Button></PageHead><div className="callout evidence-callout"><div className="callout-icon"><FileCheck2 size={19}/></div><div className="callout-copy"><b>Report integrity verified</b><p>All valuation data is linked to its original source and timestamp.</p></div><Badge>SHA-256 VERIFIED</Badge></div><div className="metric-grid three"><Metric label="AUDIT EVENTS" value="128" detail="In selected date range" delta="All recorded" icon={Activity}/><Metric label="DATA SOURCES" value="3" detail="Market oracle, workspace, system" delta="Verified" icon={Globe2}/><Metric label="LAST SNAPSHOT" value="09:42 UTC" detail="June 04, 2024" delta="Current" tone="cyan" icon={Clock3}/></div><Panel title="Audit trail" sub="Chronological treasury and system events" action={<Button><Filter size={14}/> Filter events</Button>}><div className="table-scroll"><table><thead><tr><th>TIMESTAMP (UTC)</th><th>EVENT</th><th>DETAILS</th><th>ACTOR</th><th>VERIFICATION</th></tr></thead><tbody>{[['Jun 04 · 09:42:18','Snapshot created','Treasury valuation recorded · $180,420.58','Alex Rivera','Verified'],['Jun 04 · 09:40:02','Oracle sync','CMC API v2 · 3 asset prices refreshed','System','Verified'],['Jun 03 · 16:21:45','Parameter updated','Monthly OpEx adjusted to $35,000','Alex Rivera','Verified'],['Jun 03 · 11:05:10','Stress simulation','25% broad-market shock scenario','Alex Rivera','Verified'],['Jun 02 · 09:33:51','Snapshot created','Treasury valuation recorded · $176,192.18','System','Verified']].map(([date,event,detail,actor,status])=><tr key={date}><td className="mono">{date}</td><td><b>{event}</b></td><td>{detail}</td><td>{actor}</td><td><span className="verified"><CheckCircle2 size={14}/>{status}</span></td></tr>)}</tbody></table></div><div className="table-foot">Showing 5 of 128 events <button className="text-link">Load more <ChevronDown size={13}/></button></div></Panel></>}
-function SettingsPage(){const [active,setActive]=useState('Oracle configuration');return <><PageHead title="Settings" desc="Configure your treasury workspace and data connections."/><div className="settings-layout"><aside className="settings-menu">{['General','Oracle configuration','Notifications','Team & permissions','Security'].map(x=><button onClick={()=>setActive(x)} className={active===x?'setting-active':''} key={x}>{x}</button>)}</aside><div className="settings-main"><Panel title={active} sub={active==='Oracle configuration'?'Manage market data providers and price-feed behavior.':'Configure workspace preferences and access.'}><div className="oracle-card"><div className="oracle-symbol"><Activity size={20}/></div><div className="oracle-info"><b>CoinMarketCap API v2</b><span>Primary market data provider</span></div><Badge pulse>CONNECTED</Badge><Button>Configure</Button></div><div className="setting-row"><div><b>Automatic price refresh</b><p>Refresh market prices in the background.</p></div><Toggle checked/></div><div className="setting-row"><div><b>Refresh interval</b><p>How often to fetch updated price data.</p></div><select className="select"><option>Every 5 minutes</option><option>Every 15 minutes</option><option>Every hour</option></select></div><div className="setting-row"><div><b>Fallback provider</b><p>Use an alternate source if the primary feed is unavailable.</p></div><select className="select"><option>CoinGecko API</option><option>None</option></select></div><div className="setting-row"><div><b>API response latency</b><p>Latest successful request · 09:42 UTC</p></div><span className="mono green">120 ms · Healthy</span></div><div className="panel-foot"><span className="muted">Settings are specific to Orbit Labs.</span><Button kind="primary">Save settings</Button></div></Panel><Panel title="Connection activity" sub="Recent provider health events"><div className="event-line"><CheckCircle2 size={16} className="green"/><span><b>Oracle sync completed</b><small>Jun 04, 2024 · 09:42:18 UTC</small></span><Badge>SUCCESS</Badge></div><div className="event-line"><CheckCircle2 size={16} className="green"/><span><b>Oracle sync completed</b><small>Jun 04, 2024 · 09:37:18 UTC</small></span><Badge>SUCCESS</Badge></div></Panel></div></div></>}
-function Toggle({checked=false}:{checked?:boolean}){return <label className="toggle"><input type="checkbox" defaultChecked={checked}/><i/></label>}
-function Empty(){return <div className="empty-page"><div className="empty-art"><div className="empty-orbit orbit-one"/><div className="empty-orbit orbit-two"/><div className="empty-icon"><Wallet size={32}/></div><span className="float-dot dot-a"/><span className="float-dot dot-b"/><span className="float-dot dot-c"/></div><Badge tone="cyan">YOUR TREASURY WORKSPACE</Badge><h1>Start with a clear picture.</h1><p>Add the assets in your treasury and ReservePilot will give you a real-time view of reserve coverage, operating runway, and market risk.</p><NavLink className="button primary" to="/treasury"><Plus size={16}/> Set up your treasury <ArrowRight size={15}/></NavLink><div className="empty-steps"><span><i>01</i> Add holdings</span><span><i>02</i> Set monthly burn</span><span><i>03</i> Track runway</span></div><NavLink to="/welcome" className="text-link">Back to welcome <ArrowRight size={13}/></NavLink></div>}
-function Welcome(){return <div className="welcome"><div className="welcome-top"><div className="brand-mark"><Shield size={21}/></div><span>reserve<span className="brand-light">pilot</span></span><Badge tone="cyan">TREASURY INTELLIGENCE</Badge></div><div className="welcome-hero"><div className="hero-copy"><Badge tone="cyan" pulse>INSTITUTIONAL TREASURY PLANNING</Badge><h1>Clarity for your<br/><span>treasury decisions.</span></h1><p>Understand your runway. Protect your reserves. Make every allocation with confidence.</p><div className="hero-buttons"><NavLink className="button primary" to="/overview">Open your cockpit <ArrowRight size={16}/></NavLink><NavLink className="button" to="/empty">Set up a treasury <ChevronRight size={15}/></NavLink></div><div className="trust-row"><span><i className="green">●</i> Verified market data</span><span><i className="cyan">●</i> Transparent audit trail</span></div></div><div className="hero-preview"><div className="preview-window"><div className="preview-top"><span/><span/><span/><b>ORBIT LABS · EXECUTIVE COCKPIT</b><Badge pulse>LIVE</Badge></div><div className="preview-title"><div><small>TOTAL TREASURY VALUE</small><strong>$180,420.58</strong><span className="green">↗ 2.4% <small>today</small></span></div><div className="preview-runway"><Gauge size={16}/><span>5.15 mo<br/><small>RUNWAY</small></span></div></div><div className="preview-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData}><defs><linearGradient id="previewFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={.35}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs><Area dataKey="v" type="monotone" stroke="#3b82f6" strokeWidth={2} fill="url(#previewFill)"/></AreaChart></ResponsiveContainer></div><div className="preview-assets">{tokens.map(t=><div key={t.symbol}><span className={`coin ${t.tone}`}>{t.icon}</span><b>{t.symbol}</b><span className="mono">{t.value}</span><span className="green">{t.change}</span></div>)}</div></div><div className="float-card float-status"><span className="status-check"><Check size={15}/></span><span><b>Solvency target met</b><small>5.15 months runway</small></span></div><div className="float-card float-oracle"><span className="pulse"/><span><small>MARKET ORACLE</small><b>All systems operational</b></span></div></div></div><div className="welcome-features"><div><span className="feature-icon"><Gauge size={19}/></span><b>Know your runway</b><p>See how long your treasury can support operations.</p></div><div><span className="feature-icon"><Shield size={19}/></span><b>Protect your reserves</b><p>Model risk and build a practical reserve plan.</p></div><div><span className="feature-icon"><FileCheck2 size={19}/></span><b>Show your work</b><p>Export a transparent, verifiable evidence trail.</p></div></div><div className="welcome-footer">Built for accountable treasury management <span>·</span> Secure by design <span>·</span> <NavLink to="/overview">Go to dashboard <ArrowRight size={12}/></NavLink></div></div>}
-function Stale(){return <div className="stale-wrap"><div className="stale-icon"><RefreshCw size={23}/><span>!</span></div><Badge tone="amber">DATA CONNECTION INTERRUPTED</Badge><h1>Market data is delayed.</h1><p>We couldn’t refresh prices from the market oracle. Your last known values are still available below, but may not reflect current market conditions.</p><div className="stale-time"><Clock3 size={15}/> Last successful sync <b>Today at 09:42 UTC</b></div><Panel title="Last known portfolio value" sub="Values from your most recent successful sync"><div className="stale-value">$180,420.58 <Badge tone="amber">STALE · 18 MIN AGO</Badge></div><div className="table-scroll"><table><thead><tr><th>ASSET</th><th>LAST PRICE</th><th>LAST VALUE</th><th>SYNCED</th></tr></thead><tbody>{tokens.map(t=><tr key={t.symbol}><td><b>{t.symbol}</b></td><td className="mono">{t.price}</td><td className="mono">{t.value}</td><td>09:42 UTC</td></tr>)}</tbody></table></div></Panel><div className="stale-actions"><Button kind="primary"><RefreshCw size={15}/> Try reconnecting</Button><NavLink className="button" to="/settings"><Settings size={15}/> Check oracle settings</NavLink></div><p className="stale-help"><CircleHelp size={14}/> Your holdings are safe. Reconnecting only refreshes market prices.</p></div>}
+const tokens = [
+  {
+    symbol: "USDC",
+    name: "USD Coin",
+    amount: "40,000.00",
+    price: "$1.00",
+    value: "$40,000.00",
+    change: "+0.01%",
+    tone: "cyan",
+    icon: "U",
+  },
+  {
+    symbol: "ETH",
+    name: "Ethereum",
+    amount: "18.00",
+    price: "$3,420.15",
+    value: "$61,562.70",
+    change: "+2.84%",
+    tone: "purple",
+    icon: "Ξ",
+  },
+  {
+    symbol: "BTC",
+    name: "Bitcoin",
+    amount: "0.75",
+    price: "$78,477.17",
+    value: "$58,857.88",
+    change: "−1.24%",
+    tone: "orange",
+    icon: "₿",
+  },
+];
+const chartData = [
+  { d: "Apr 01", v: 132 },
+  { d: "Apr 08", v: 136 },
+  { d: "Apr 15", v: 134 },
+  { d: "Apr 22", v: 145 },
+  { d: "Apr 29", v: 141 },
+  { d: "May 06", v: 153 },
+  { d: "May 13", v: 149 },
+  { d: "May 20", v: 165 },
+  { d: "May 27", v: 171 },
+  { d: "Jun 03", v: 180 },
+];
+function Badge({
+  children,
+  tone = "green",
+  pulse = false,
+}: {
+  children: React.ReactNode;
+  tone?: string;
+  pulse?: boolean;
+}) {
+  return (
+    <span className={`badge ${tone}`}>
+      {pulse && <i className="pulse" />}
+      {children}
+    </span>
+  );
+}
+function Button({
+  children,
+  kind = "quiet",
+  onClick,
+  className = "",
+  type = "button",
+}: {
+  children: React.ReactNode;
+  kind?: string;
+  onClick?: () => void;
+  className?: string;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      className={`button ${kind} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+function Panel({
+  children,
+  title,
+  sub,
+  action,
+  className = "",
+}: {
+  children: React.ReactNode;
+  title?: string;
+  sub?: string;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`panel ${className}`}>
+      {(title || action) && (
+        <div className="panel-head">
+          <div>
+            {title && <h2>{title}</h2>}
+            {sub && <p>{sub}</p>}
+          </div>
+          {action}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+function Metric({
+  label,
+  value,
+  detail,
+  delta,
+  tone = "green",
+  icon: Icon = Activity,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  delta?: string;
+  tone?: string;
+  icon?: any;
+}) {
+  return (
+    <div className="metric">
+      <div className="metric-top">
+        <span>{label}</span>
+        <Icon size={16} className="muted" />
+      </div>
+      <strong>{value}</strong>
+      <div className="metric-bottom">
+        <span className={tone}>{delta}</span>
+        <span>{detail}</span>
+      </div>
+    </div>
+  );
+}
+function Layout() {
+  const location = useLocation();
+  const [mobile, setMobile] = useState(false);
+  const [scenario, setScenario] = useState("Baseline");
+  const title = screenTitles[location.pathname] || "Executive Cockpit";
+  return (
+    <div className="app-shell">
+      <aside className={`sidebar ${mobile ? "show" : ""}`}>
+        <div className="brand">
+          <div className="brand-mark">
+            <Shield size={21} />
+          </div>
+          <span>
+            reserve<span className="brand-light">pilot</span>
+            <small>TREASURY INTELLIGENCE</small>
+          </span>
+          <button className="mobile-close" onClick={() => setMobile(false)}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="org">
+          <div className="org-icon">O</div>
+          <div>
+            <b>Orbit Labs</b>
+            <small>Institutional treasury</small>
+          </div>
+          <ChevronDown size={15} />
+        </div>
+        <div className="nav-wrap">
+          {nav.map((group) => (
+            <div className="nav-group" key={group.group}>
+              <div className="nav-label">{group.group}</div>
+              {group.links.map(([to, label, Icon]) => (
+                <NavLink
+                  onClick={() => setMobile(false)}
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `nav-link ${isActive ? "active" : ""}`
+                  }
+                >
+                  <Icon size={17} />
+                  <span>{label}</span>
+                  {to === "/stress-test" && (
+                    <span className="nav-count">3</span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+          <div className="nav-label spaces-label">YOUR WORKSPACES</div>
+          <div className="workspace-link">
+            <span className="workspace-dot blue-dot" />
+            Main treasury <MoreHorizontal size={15} />
+          </div>
+          <div className="workspace-link">
+            <span className="workspace-dot green-dot" />
+            Foundation DAO <MoreHorizontal size={15} />
+          </div>
+        </div>
+        <div className="sidebar-bottom">
+          <div className="oracle-mini">
+            <div className="oracle-top">
+              <span className="pulse" /> ORACLE STATUS{" "}
+              <Badge tone="green">LIVE</Badge>
+            </div>
+            <b>CoinMarketCap API</b>
+            <small>
+              <span className="green">●</span> All systems operational · 120ms
+            </small>
+          </div>
+          <a className="documentation">
+            <BookOpen size={15} /> Documentation <ExternalLink size={12} />
+          </a>
+          <div className="profile">
+            <div className="avatar">AR</div>
+            <div>
+              <b>Alex Rivera</b>
+              <small>Admin · Multi-sig</small>
+            </div>
+            <MoreHorizontal size={17} />
+          </div>
+        </div>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <button className="mobile-menu" onClick={() => setMobile(true)}>
+            <Menu size={19} />
+          </button>
+          <div className="crumb">
+            <span>Orbit Labs</span>
+            <ChevronRight size={13} />
+            <b>{title}</b>
+          </div>
+          <div className="top-actions">
+            <div className="scenario-picker">
+              <span>Scenario</span>
+              {["Baseline", "Depeg 2024", "Bear run"].map((x) => (
+                <button
+                  key={x}
+                  onClick={() => setScenario(x)}
+                  className={scenario === x ? "selected" : ""}
+                >
+                  {x}
+                </button>
+              ))}
+            </div>
+            <button className="icon-button" title="Search">
+              <Search size={17} />
+            </button>
+            <button className="icon-button notify" title="Notifications">
+              <Bell size={17} />
+              <i />
+            </button>
+            <div className="top-avatar">AR</div>
+          </div>
+        </header>
+        <main className="content">
+          <Routes>
+            <Route path="/" element={<Navigate to="/welcome" replace />} />
+            <Route path="/welcome" element={<Welcome />} />
+            <Route path="/overview" element={<Dashboard />} />
+            <Route path="/treasury" element={<Treasury />} />
+            <Route path="/token" element={<TokenPage />} />
+            <Route path="/market" element={<Market />} />
+            <Route path="/reserve-plan" element={<ReservePlan />} />
+            <Route path="/stress-test" element={<Stress />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/evidence" element={<Evidence />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/empty" element={<Empty />} />
+            <Route path="/stale-data" element={<Stale />} />
+            <Route path="*" element={<Navigate to="/overview" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}
+function PageHead({
+  eyebrow,
+  title,
+  desc,
+  children,
+}: {
+  eyebrow?: string;
+  title: string;
+  desc: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">
+          {eyebrow || "ORBIT LABS  /  TREASURY INTELLIGENCE"}
+        </div>
+        <h1>{title}</h1>
+        <p>{desc}</p>
+      </div>
+      <div className="page-actions">{children}</div>
+    </div>
+  );
+}
+function Dashboard() {
+  return (
+    <>
+      <PageHead
+        eyebrow="TUESDAY, JUNE 04, 2024  ·  MAIN TREASURY"
+        title="Executive cockpit"
+        desc="A clear view of your treasury health, runway, and reserve position."
+      >
+        <Badge tone="cyan" pulse>
+          LIVE DATA
+        </Badge>
+        <Button>
+          <RefreshCw size={15} /> Refresh data
+        </Button>
+        <NavLink to="/treasury" className="button primary">
+          <SlidersHorizontal size={15} /> Edit treasury
+        </NavLink>
+      </PageHead>
+      <div className="callout success-callout">
+        <div className="callout-icon">
+          <Shield size={19} />
+        </div>
+        <div className="callout-copy">
+          <div>
+            <b>Solvency target met</b>
+            <span className="callout-divider" />
+            <Badge tone="amber">74% VOLATILE EXPOSURE</Badge>
+          </div>
+          <p>
+            Your treasury is covered for <strong>5.15 months</strong> against a
+            3-month target. Stablecoin reserves alone cover 1.14 months of
+            operating costs.
+          </p>
+        </div>
+        <div className="callout-actions">
+          <NavLink className="button" to="/stress-test">
+            Run stress test <ArrowRight size={14} />
+          </NavLink>
+          <NavLink className="button primary" to="/reserve-plan">
+            <Shield size={15} /> Build reserve plan
+          </NavLink>
+        </div>
+      </div>
+      <div className="metric-grid">
+        <Metric
+          label="TOTAL TREASURY VALUE"
+          value="$180,420.58"
+          detail="vs. previous snapshot"
+          delta="↗ 2.4%"
+          icon={Wallet}
+        />
+        <Metric
+          label="MONTHLY OPERATING BURN"
+          value="$35,000"
+          detail="Next payroll in 12 days"
+          delta="Monthly"
+          tone="cyan"
+          icon={CalendarClock}
+        />
+        <Metric
+          label="CURRENT RUNWAY"
+          value="5.15 mo"
+          detail="Target: 3.00 months"
+          delta="Covered"
+          icon={Gauge}
+        />
+        <Metric
+          label="STABLE RESERVE RATIO"
+          value="31.2%"
+          detail="Target: 40%"
+          delta="Below target"
+          tone="amber"
+          icon={Coins}
+        />
+      </div>
+      <div className="dashboard-grid">
+        <Panel
+          title="Treasury performance"
+          sub="Portfolio value · USD"
+          action={
+            <select className="select">
+              <option>Last 90 days</option>
+              <option>30 days</option>
+              <option>1 year</option>
+            </select>
+          }
+        >
+          <div className="chart-legend">
+            <span>
+              <i className="legend-blue" /> Treasury value
+            </span>
+            <span className="mono">
+              $180,420.58 <b className="green">+12.6%</b>
+            </span>
+          </div>
+          <div className="chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={chartData}
+                margin={{ top: 10, right: 8, left: -16, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="blueFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.22} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#1e293b" vertical={false} />
+                <XAxis
+                  dataKey="d"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "#64748b", fontSize: 11 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "#64748b", fontSize: 11 }}
+                  tickFormatter={(v) => `$${v}k`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#131b2e",
+                    border: "1px solid #334155",
+                    borderRadius: 6,
+                    color: "#e2e8f0",
+                  }}
+                  formatter={(v: any) => [`$${v}k`, "Portfolio value"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="v"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="url(#blueFill)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+        <Panel
+          title="Runway coverage"
+          sub="Available treasury against monthly burn"
+        >
+          <div className="runway-visual">
+            <div className="runway-number">
+              5.15<span> months</span>
+            </div>
+            <div className="runway-track">
+              <div style={{ width: "86%" }} />
+            </div>
+            <div className="runway-scale">
+              <span>0</span>
+              <span className="target-mark">3 mo safety target</span>
+              <span>6 mo</span>
+            </div>
+          </div>
+          <div className="runway-breakdown">
+            <div>
+              <span>
+                <i className="dot dot-blue" /> High-beta assets
+              </span>
+              <b className="mono">4.01 mo</b>
+            </div>
+            <div>
+              <span>
+                <i className="dot dot-cyan" /> Stable reserves
+              </span>
+              <b className="mono">1.14 mo</b>
+            </div>
+            <div>
+              <span>
+                <i className="dot dot-line" /> Minimum target
+              </span>
+              <b className="mono">3.00 mo</b>
+            </div>
+          </div>
+        </Panel>
+      </div>
+      <Panel
+        title="Asset allocation"
+        sub="Current holdings · ranked by portfolio value"
+        action={
+          <NavLink className="text-link" to="/treasury">
+            View all assets <ArrowRight size={14} />
+          </NavLink>
+        }
+      >
+        <AssetTable compact />
+      </Panel>
+      <div className="footer-note">
+        <span>
+          <span className="pulse" /> ORACLE ACTIVE
+        </span>
+        <span>Last sync 2 minutes ago</span>
+        <span>Data provided by CoinMarketCap</span>
+        <NavLink to="/evidence">
+          View audit trail <ArrowRight size={12} />
+        </NavLink>
+      </div>
+    </>
+  );
+}
+function AssetTable({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ASSET</th>
+            <th>QUANTITY</th>
+            <th>PRICE</th>
+            <th>24H CHANGE</th>
+            <th className="right">VALUE</th>
+            <th>ALLOCATION</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tokens.map((x, i) => (
+            <tr key={x.symbol}>
+              <td>
+                <div className="asset-cell">
+                  <span className={`coin ${x.tone}`}>{x.icon}</span>
+                  <div>
+                    <b>{x.symbol}</b>
+                    <small>{x.name}</small>
+                  </div>
+                </div>
+              </td>
+              <td className="mono">{x.amount}</td>
+              <td className="mono">{x.price}</td>
+              <td className={`mono ${i === 2 ? "red" : "green"}`}>
+                {x.change}
+              </td>
+              <td className="mono right">{x.value}</td>
+              <td>
+                <div className="allocation">
+                  <span>
+                    <i style={{ width: ["22%", "34%", "33%"][i] }} />
+                  </span>
+                  <small>{["22.2%", "34.1%", "32.6%"][i]}</small>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function Treasury() {
+  const [tab, setTab] = useState("Holdings");
+  return (
+    <>
+      <PageHead
+        title="Treasury setup"
+        desc="Manage asset holdings, operating costs, and solvency parameters."
+      >
+        <Button>
+          <Download size={15} /> Export
+        </Button>
+        <NavLink className="button primary" to="/token">
+          <Plus size={15} /> Add asset
+        </NavLink>
+      </PageHead>
+      <div className="tabs">
+        {["Holdings", "Operating costs", "Risk parameters"].map((t) => (
+          <button
+            onClick={() => setTab(t)}
+            className={tab === t ? "tab-active" : ""}
+            key={t}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {tab === "Holdings" ? (
+        <>
+          <div className="metric-grid three">
+            <Metric
+              label="TOTAL PORTFOLIO VALUE"
+              value="$180,420.58"
+              detail="3 tracked assets"
+              delta="↗ 2.4%"
+              icon={Wallet}
+            />
+            <Metric
+              label="STABLECOIN RESERVES"
+              value="$40,000.00"
+              detail="22.2% of portfolio"
+              delta="1 asset"
+              tone="cyan"
+              icon={Coins}
+            />
+            <Metric
+              label="TARGET RUNWAY"
+              value="3.0 months"
+              detail="Current: 5.15 months"
+              delta="On target"
+              icon={Gauge}
+            />
+          </div>
+          <Panel
+            title="Treasury holdings"
+            sub="Configure the assets held in your treasury"
+            action={
+              <NavLink to="/token" className="button primary">
+                <Plus size={15} /> Add asset
+              </NavLink>
+            }
+          >
+            <AssetTable />
+            <div className="table-foot">
+              <span>Showing 3 assets</span>
+              <span>
+                Prices updated 2m ago <RefreshCw size={12} />
+              </span>
+            </div>
+          </Panel>
+          <Panel
+            title="Treasury profile"
+            sub="The assumptions used in your runway calculations"
+          >
+            <div className="form-grid">
+              <label>
+                Monthly operating expenses
+                <div className="input-wrap">
+                  <span>$</span>
+                  <input defaultValue="35,000" />
+                </div>
+              </label>
+              <label>
+                Minimum reserve target
+                <div className="input-wrap">
+                  <input defaultValue="3" />
+                  <span>months</span>
+                </div>
+              </label>
+              <label>
+                Reporting currency
+                <select className="field">
+                  <option>USD — US Dollar</option>
+                </select>
+              </label>
+            </div>
+            <div className="panel-foot">
+              <span className="muted">Last saved just now</span>
+              <Button kind="primary">Save changes</Button>
+            </div>
+          </Panel>
+        </>
+      ) : (
+        <ProfileTab tab={tab} />
+      )}
+    </>
+  );
+}
+function ProfileTab({ tab }: { tab: string }) {
+  return (
+    <Panel
+      title={
+        tab === "Operating costs"
+          ? "Monthly operating costs"
+          : "Risk parameters"
+      }
+      sub={
+        tab === "Operating costs"
+          ? "Set expenses used to calculate treasury runway."
+          : "Define thresholds that trigger risk alerts."
+      }
+    >
+      <div className="form-grid">
+        <label>
+          {tab === "Operating costs"
+            ? "Monthly burn rate"
+            : "Minimum runway threshold"}
+          <div className="input-wrap">
+            <span>{tab === "Operating costs" ? "$" : ""}</span>
+            <input
+              defaultValue={tab === "Operating costs" ? "35,000" : "3.0"}
+            />
+            <span>{tab === "Operating costs" ? "USD" : "months"}</span>
+          </div>
+        </label>
+        <label>
+          Alert threshold
+          <div className="input-wrap">
+            <input defaultValue="120" />
+            <span>% of monthly burn</span>
+          </div>
+        </label>
+        <label>
+          Review cadence
+          <select className="field">
+            <option>Weekly</option>
+            <option>Daily</option>
+            <option>Monthly</option>
+          </select>
+        </label>
+      </div>
+      <div className="panel-foot">
+        <span className="muted">Changes are saved to this workspace.</span>
+        <Button kind="primary">Save changes</Button>
+      </div>
+    </Panel>
+  );
+}
+function TokenPage() {
+  return (
+    <>
+      <PageHead
+        title="Add custom token"
+        desc="Register an asset for treasury tracking."
+      >
+        <NavLink className="button" to="/treasury">
+          <X size={15} /> Close
+        </NavLink>
+      </PageHead>
+      <div className="modal-card">
+        <div className="modal-title">
+          <div className="callout-icon">
+            <Coins size={20} />
+          </div>
+          <div>
+            <h2>Add custom token</h2>
+            <p>
+              Enter the token's contract details to add it to your holdings.
+            </p>
+          </div>
+        </div>
+        <label>
+          Network
+          <select className="field">
+            <option>Ethereum Mainnet</option>
+            <option>Arbitrum One</option>
+            <option>Base</option>
+            <option>Optimism</option>
+          </select>
+        </label>
+        <label>
+          Contract address
+          <div className="input-wrap">
+            <input placeholder="0x…" />
+            <button className="text-link">Paste</button>
+          </div>
+          <small className="field-help">
+            Enter a valid token contract address.
+          </small>
+        </label>
+        <div className="form-grid">
+          <label>
+            Token symbol
+            <input className="field" placeholder="e.g. WETH" />
+          </label>
+          <label>
+            Token decimals
+            <input className="field" placeholder="18" />
+          </label>
+        </div>
+        <div className="verify-note">
+          <LockKeyhole size={16} />
+          <span>Token metadata is validated locally before adding it.</span>
+        </div>
+        <div className="panel-foot">
+          <NavLink to="/treasury" className="button">
+            Cancel
+          </NavLink>
+          <Button kind="primary">
+            <Plus size={15} /> Add token
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+function Market() {
+  return (
+    <>
+      <PageHead
+        title="Market overview"
+        desc="Market telemetry for every asset in your treasury."
+      >
+        <Badge tone="cyan" pulse>
+          MARKET FEED LIVE
+        </Badge>
+        <Button>
+          <RefreshCw size={15} /> Refresh
+        </Button>
+      </PageHead>
+      <div className="metric-grid">
+        <Metric
+          label="TOTAL MARKET VALUE"
+          value="$180,420.58"
+          detail="Across 3 treasury assets"
+          delta="↗ 2.4% 24h"
+          icon={Globe2}
+        />
+        <Metric
+          label="MARKET VOLATILITY"
+          value="Moderate"
+          detail="30-day portfolio index"
+          delta="Within limits"
+          tone="cyan"
+          icon={Activity}
+        />
+        <Metric
+          label="STABLECOIN PEG"
+          value="$1.0001"
+          detail="USDC · +0.01% deviation"
+          delta="Healthy"
+          icon={Shield}
+        />
+        <Metric
+          label="DATA FRESHNESS"
+          value="120 ms"
+          detail="CoinMarketCap oracle"
+          delta="Operational"
+          tone="cyan"
+          icon={Zap}
+        />
+      </div>
+      <Panel
+        title="Market performance"
+        sub="Portfolio indexed performance · 90 days"
+        action={
+          <select className="select">
+            <option>USD</option>
+            <option>Indexed</option>
+          </select>
+        }
+      >
+        <div className="chart big-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <ReLineChart data={chartData}>
+              <CartesianGrid stroke="#1e293b" vertical={false} />
+              <XAxis
+                dataKey="d"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#64748b", fontSize: 11 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#64748b", fontSize: 11 }}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "#131b2e",
+                  border: "1px solid #334155",
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="v"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                dot={false}
+              />
+            </ReLineChart>
+          </ResponsiveContainer>
+        </div>
+      </Panel>
+      <Panel title="Tracked assets" sub="Live prices and daily movement">
+        <AssetTable />
+      </Panel>
+    </>
+  );
+}
+function ReservePlan() {
+  return (
+    <>
+      <PageHead
+        title="Reserve plan roadmap"
+        desc="A disciplined path toward your treasury's target reserve allocation."
+      >
+        <Badge tone="amber">PLAN IN PROGRESS</Badge>
+        <Button>
+          <Download size={15} /> Export plan
+        </Button>
+        <Button kind="primary">
+          <Sparkles size={15} /> Recalculate plan
+        </Button>
+      </PageHead>
+      <div className="callout plan-callout">
+        <div className="callout-icon amber-icon">
+          <ShieldAlert size={20} />
+        </div>
+        <div className="callout-copy">
+          <div>
+            <b>Reserve coverage is below your target</b>
+          </div>
+          <p>
+            Your treasury currently has <strong>1.14 months</strong> of
+            stablecoin runway. Increase stable reserves by{" "}
+            <strong>$65,000</strong> to reach the 3-month stable reserve goal.
+          </p>
+        </div>
+      </div>
+      <div className="metric-grid three">
+        <Metric
+          label="CURRENT STABLE RESERVES"
+          value="$40,000"
+          detail="22.2% of treasury"
+          delta="Current"
+          tone="amber"
+          icon={Coins}
+        />
+        <Metric
+          label="TARGET STABLE RESERVES"
+          value="$105,000"
+          detail="3 months of operating costs"
+          delta="Target"
+          tone="cyan"
+          icon={Shield}
+        />
+        <Metric
+          label="REMAINING TO TARGET"
+          value="$65,000"
+          detail="Recommended over 90 days"
+          delta="36.0% gap"
+          tone="amber"
+          icon={ArrowUpRight}
+        />
+      </div>
+      <Panel
+        title="Rebalancing roadmap"
+        sub="Suggested steps to achieve your stable reserve target"
+      >
+        <div className="roadmap">
+          <div className="roadmap-row">
+            <span className="step done">
+              <Check size={15} />
+            </span>
+            <div>
+              <b>Establish target reserve level</b>
+              <p>Set stable reserve goal at 3 months of operating expenses</p>
+            </div>
+            <div className="step-value">
+              <Badge>COMPLETE</Badge>
+              <b className="mono">$105,000</b>
+            </div>
+          </div>
+          <div className="roadmap-row">
+            <span className="step current">02</span>
+            <div>
+              <b>Build stablecoin reserves</b>
+              <p>Allocate $21,667 per month from liquid treasury assets</p>
+            </div>
+            <div className="step-value">
+              <Badge tone="amber">IN PROGRESS</Badge>
+              <b className="mono">$40,000 / $105,000</b>
+            </div>
+          </div>
+          <div className="roadmap-row">
+            <span className="step">03</span>
+            <div>
+              <b>Review allocation and confirm</b>
+              <p>Reassess treasury risk profile when target is reached</p>
+            </div>
+            <div className="step-value">
+              <span className="muted">90 days</span>
+              <b className="mono">Pending</b>
+            </div>
+          </div>
+        </div>
+        <div className="progress-label">
+          <span>ROADMAP PROGRESS</span>
+          <b className="mono">38%</b>
+        </div>
+        <div className="progress-track">
+          <i style={{ width: "38%" }} />
+        </div>
+      </Panel>
+      <div className="footer-note">
+        <span>Plan generated June 04, 2024</span>
+        <span>Based on current holdings and $35,000 monthly burn</span>
+        <span>For planning purposes</span>
+      </div>
+    </>
+  );
+}
+function Stress() {
+  const [shock, setShock] = useState(25);
+  return (
+    <>
+      <PageHead
+        title="Stress test simulator"
+        desc="Model adverse market scenarios and assess their impact on treasury runway."
+      >
+        <Badge tone="cyan">SCENARIO MODEL</Badge>
+        <Button>
+          <FileClock size={15} /> Scenario history
+        </Button>
+      </PageHead>
+      <div className="stress-grid">
+        <div>
+          <Panel
+            title="Configure market shock"
+            sub="Set asset price shocks for your simulation"
+          >
+            <div className="scenario-row">
+              <span className="scenario-coin orange">₿</span>
+              <div className="scenario-asset">
+                <b>
+                  Bitcoin <small>BTC</small>
+                </b>
+                <span>Current $78,477.17</span>
+              </div>
+              <strong className="mono red">−{shock}%</strong>
+            </div>
+            <input
+              className="range"
+              type="range"
+              min="0"
+              max="80"
+              value={shock}
+              onChange={(e) => setShock(+e.target.value)}
+            />
+            <div className="range-labels">
+              <span>0%</span>
+              <span className="range-value">−{shock}% shock</span>
+              <span>−80%</span>
+            </div>
+            <div className="scenario-row">
+              <span className="scenario-coin purple">Ξ</span>
+              <div className="scenario-asset">
+                <b>
+                  Ethereum <small>ETH</small>
+                </b>
+                <span>Current $3,420.15</span>
+              </div>
+              <strong className="mono red">−{Math.round(shock * 1.2)}%</strong>
+            </div>
+            <input
+              className="range cyan-range"
+              type="range"
+              min="0"
+              max="80"
+              value={Math.round(shock * 1.2)}
+              onChange={(e) =>
+                setShock(Math.min(66, Math.round(+e.target.value / 1.2)))
+              }
+            />
+            <div className="scenario-row">
+              <span className="scenario-coin cyan">U</span>
+              <div className="scenario-asset">
+                <b>
+                  USDC <small>Stablecoin</small>
+                </b>
+                <span>Current $1.0001</span>
+              </div>
+              <strong className="mono amber">−2%</strong>
+            </div>
+            <label className="toggle-line">
+              <span>Include stablecoin depeg scenario</span>
+              <input type="checkbox" defaultChecked />
+              <i />
+            </label>
+            <Button kind="primary" className="run-test">
+              <Zap size={15} /> Run stress test
+            </Button>
+          </Panel>
+          <Panel
+            title="Preset scenarios"
+            sub="Start with a historical market event"
+          >
+            <div className="preset-list">
+              {[
+                ["2022 Bear Market", "Broad market drawdown", "−65%"],
+                ["USDC Depeg", "Stablecoin liquidity event", "−8%"],
+                ["Custom Scenario", "Your saved stress profile", "Edit"],
+              ].map(([t, s, v]) => (
+                <button className="preset" key={t}>
+                  <span>
+                    <b>{t}</b>
+                    <small>{s}</small>
+                  </span>
+                  <span className="mono red">{v}</span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </div>
+          </Panel>
+        </div>
+        <div>
+          <Panel
+            title="Projected impact"
+            sub="Estimated treasury position after simulated shock"
+          >
+            <div className="impact-number">
+              $
+              <span>
+                {(180420.58 - (120420.58 * shock) / 100).toLocaleString(
+                  "en-US",
+                  { maximumFractionDigits: 0 },
+                )}
+              </span>
+              <small>
+                −
+                {((120420.58 * shock) / 100).toLocaleString("en-US", {
+                  maximumFractionDigits: 0,
+                })}{" "}
+                ({((120420.58 * shock) / 180420.58).toFixed(1)}%)
+              </small>
+            </div>
+            <div className="chart impact-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="redFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="0%"
+                        stopColor="#ef4444"
+                        stopOpacity={0.24}
+                      />
+                      <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#1e293b" vertical={false} />
+                  <Area
+                    type="monotone"
+                    dataKey="v"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    fill="url(#redFill)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="impact-kpis">
+              <div>
+                <span>RUNWAY AFTER SHOCK</span>
+                <b className="amber">3.44 mo</b>
+              </div>
+              <div>
+                <span>STABLE RUNWAY</span>
+                <b>1.14 mo</b>
+              </div>
+              <div>
+                <span>RESERVE TARGET</span>
+                <b>3.00 mo</b>
+              </div>
+            </div>
+            <div className="callout warn-small">
+              <AlertTriangle size={17} />
+              <p>
+                Treasury remains above the minimum runway threshold, but has
+                less margin against further volatility.
+              </p>
+            </div>
+            <Button>
+              <Download size={15} /> Export simulation
+            </Button>
+          </Panel>
+        </div>
+      </div>
+    </>
+  );
+}
+function History() {
+  return (
+    <>
+      <PageHead
+        title="Historical snapshots"
+        desc="Review treasury performance and key solvency metrics over time."
+      >
+        <Button>
+          <Filter size={15} /> Filters
+        </Button>
+        <Button kind="primary">
+          <Plus size={15} /> Create snapshot
+        </Button>
+      </PageHead>
+      <div className="metric-grid three">
+        <Metric
+          label="SNAPSHOTS RECORDED"
+          value="24"
+          detail="Since Mar 01, 2024"
+          delta="Weekly"
+          icon={FileClock}
+        />
+        <Metric
+          label="VALUE CHANGE"
+          value="+$32,180"
+          detail="Since first snapshot"
+          delta="↗ 21.7%"
+          icon={LineChart}
+        />
+        <Metric
+          label="RUNWAY TREND"
+          value="+0.8 mo"
+          detail="Over the last 90 days"
+          delta="Improving"
+          icon={Gauge}
+        />
+      </div>
+      <Panel
+        title="Portfolio value over time"
+        sub="Historical portfolio valuation and reserve coverage"
+        action={
+          <select className="select">
+            <option>Last 90 days</option>
+            <option>Last 30 days</option>
+            <option>Year to date</option>
+          </select>
+        }
+      >
+        <div className="chart big-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="historyFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.18} />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#1e293b" vertical={false} />
+              <XAxis
+                dataKey="d"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#64748b", fontSize: 11 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: "#64748b", fontSize: 11 }}
+                tickFormatter={(v) => `$${v}k`}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "#131b2e",
+                  border: "1px solid #334155",
+                }}
+              />
+              <Area
+                dataKey="v"
+                type="monotone"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                fill="url(#historyFill)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Panel>
+      <Panel
+        title="Snapshot history"
+        sub="A point-in-time record of your treasury"
+      >
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE & TIME</th>
+                <th>PORTFOLIO VALUE</th>
+                <th>RUNWAY</th>
+                <th>STABLE RESERVE</th>
+                <th>STATUS</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                "Jun 04, 2024 · 09:42",
+                "May 28, 2024 · 09:30",
+                "May 21, 2024 · 09:31",
+                "May 14, 2024 · 09:28",
+                "May 07, 2024 · 09:29",
+              ].map((d, i) => (
+                <tr key={d}>
+                  <td>{d}</td>
+                  <td className="mono">
+                    {
+                      [
+                        "$180,420.58",
+                        "$176,192.18",
+                        "$169,822.40",
+                        "$171,904.92",
+                        "$162,101.44",
+                      ][i]
+                    }
+                  </td>
+                  <td className="mono">
+                    {["5.15", "5.04", "4.85", "4.91", "4.63"][i]} mo
+                  </td>
+                  <td className="mono">{i === 0 ? "$40,000" : "$38,000"}</td>
+                  <td>
+                    <Badge>{i === 0 ? "LATEST" : "RECORDED"}</Badge>
+                  </td>
+                  <td>
+                    <button className="icon-button">
+                      <MoreHorizontal size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </>
+  );
+}
+function Evidence() {
+  return (
+    <>
+      <PageHead
+        title="Evidence report & audit trail"
+        desc="A transparent, exportable record of treasury data and system activity."
+      >
+        <Button>
+          <CalendarClock size={15} /> Jun 01 – Jun 04, 2024{" "}
+          <ChevronDown size={13} />
+        </Button>
+        <Button kind="primary">
+          <Download size={15} /> Export report
+        </Button>
+      </PageHead>
+      <div className="callout evidence-callout">
+        <div className="callout-icon">
+          <FileCheck2 size={19} />
+        </div>
+        <div className="callout-copy">
+          <b>Report integrity verified</b>
+          <p>
+            All valuation data is linked to its original source and timestamp.
+          </p>
+        </div>
+        <Badge>SHA-256 VERIFIED</Badge>
+      </div>
+      <div className="metric-grid three">
+        <Metric
+          label="AUDIT EVENTS"
+          value="128"
+          detail="In selected date range"
+          delta="All recorded"
+          icon={Activity}
+        />
+        <Metric
+          label="DATA SOURCES"
+          value="3"
+          detail="Market oracle, workspace, system"
+          delta="Verified"
+          icon={Globe2}
+        />
+        <Metric
+          label="LAST SNAPSHOT"
+          value="09:42 UTC"
+          detail="June 04, 2024"
+          delta="Current"
+          tone="cyan"
+          icon={Clock3}
+        />
+      </div>
+      <Panel
+        title="Audit trail"
+        sub="Chronological treasury and system events"
+        action={
+          <Button>
+            <Filter size={14} /> Filter events
+          </Button>
+        }
+      >
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>TIMESTAMP (UTC)</th>
+                <th>EVENT</th>
+                <th>DETAILS</th>
+                <th>ACTOR</th>
+                <th>VERIFICATION</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                [
+                  "Jun 04 · 09:42:18",
+                  "Snapshot created",
+                  "Treasury valuation recorded · $180,420.58",
+                  "Alex Rivera",
+                  "Verified",
+                ],
+                [
+                  "Jun 04 · 09:40:02",
+                  "Oracle sync",
+                  "CMC API v2 · 3 asset prices refreshed",
+                  "System",
+                  "Verified",
+                ],
+                [
+                  "Jun 03 · 16:21:45",
+                  "Parameter updated",
+                  "Monthly OpEx adjusted to $35,000",
+                  "Alex Rivera",
+                  "Verified",
+                ],
+                [
+                  "Jun 03 · 11:05:10",
+                  "Stress simulation",
+                  "25% broad-market shock scenario",
+                  "Alex Rivera",
+                  "Verified",
+                ],
+                [
+                  "Jun 02 · 09:33:51",
+                  "Snapshot created",
+                  "Treasury valuation recorded · $176,192.18",
+                  "System",
+                  "Verified",
+                ],
+              ].map(([date, event, detail, actor, status]) => (
+                <tr key={date}>
+                  <td className="mono">{date}</td>
+                  <td>
+                    <b>{event}</b>
+                  </td>
+                  <td>{detail}</td>
+                  <td>{actor}</td>
+                  <td>
+                    <span className="verified">
+                      <CheckCircle2 size={14} />
+                      {status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="table-foot">
+          Showing 5 of 128 events{" "}
+          <button className="text-link">
+            Load more <ChevronDown size={13} />
+          </button>
+        </div>
+      </Panel>
+    </>
+  );
+}
+function SettingsPage() {
+  const [active, setActive] = useState("Oracle configuration");
+  return (
+    <>
+      <PageHead
+        title="Settings"
+        desc="Configure your treasury workspace and data connections."
+      />
+      <div className="settings-layout">
+        <aside className="settings-menu">
+          {[
+            "General",
+            "Oracle configuration",
+            "Notifications",
+            "Team & permissions",
+            "Security",
+          ].map((x) => (
+            <button
+              onClick={() => setActive(x)}
+              className={active === x ? "setting-active" : ""}
+              key={x}
+            >
+              {x}
+            </button>
+          ))}
+        </aside>
+        <div className="settings-main">
+          <Panel
+            title={active}
+            sub={
+              active === "Oracle configuration"
+                ? "Manage market data providers and price-feed behavior."
+                : "Configure workspace preferences and access."
+            }
+          >
+            <div className="oracle-card">
+              <div className="oracle-symbol">
+                <Activity size={20} />
+              </div>
+              <div className="oracle-info">
+                <b>CoinMarketCap API v2</b>
+                <span>Primary market data provider</span>
+              </div>
+              <Badge pulse>CONNECTED</Badge>
+              <Button>Configure</Button>
+            </div>
+            <div className="setting-row">
+              <div>
+                <b>Automatic price refresh</b>
+                <p>Refresh market prices in the background.</p>
+              </div>
+              <Toggle checked />
+            </div>
+            <div className="setting-row">
+              <div>
+                <b>Refresh interval</b>
+                <p>How often to fetch updated price data.</p>
+              </div>
+              <select className="select">
+                <option>Every 5 minutes</option>
+                <option>Every 15 minutes</option>
+                <option>Every hour</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <b>Fallback provider</b>
+                <p>
+                  Use an alternate source if the primary feed is unavailable.
+                </p>
+              </div>
+              <select className="select">
+                <option>CoinGecko API</option>
+                <option>None</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <b>API response latency</b>
+                <p>Latest successful request · 09:42 UTC</p>
+              </div>
+              <span className="mono green">120 ms · Healthy</span>
+            </div>
+            <div className="panel-foot">
+              <span className="muted">
+                Settings are specific to Orbit Labs.
+              </span>
+              <Button kind="primary">Save settings</Button>
+            </div>
+          </Panel>
+          <Panel
+            title="Connection activity"
+            sub="Recent provider health events"
+          >
+            <div className="event-line">
+              <CheckCircle2 size={16} className="green" />
+              <span>
+                <b>Oracle sync completed</b>
+                <small>Jun 04, 2024 · 09:42:18 UTC</small>
+              </span>
+              <Badge>SUCCESS</Badge>
+            </div>
+            <div className="event-line">
+              <CheckCircle2 size={16} className="green" />
+              <span>
+                <b>Oracle sync completed</b>
+                <small>Jun 04, 2024 · 09:37:18 UTC</small>
+              </span>
+              <Badge>SUCCESS</Badge>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </>
+  );
+}
+function Toggle({ checked = false }: { checked?: boolean }) {
+  return (
+    <label className="toggle">
+      <input type="checkbox" defaultChecked={checked} />
+      <i />
+    </label>
+  );
+}
+function Empty() {
+  return (
+    <div className="empty-page">
+      <div className="empty-art">
+        <div className="empty-orbit orbit-one" />
+        <div className="empty-orbit orbit-two" />
+        <div className="empty-icon">
+          <Wallet size={32} />
+        </div>
+        <span className="float-dot dot-a" />
+        <span className="float-dot dot-b" />
+        <span className="float-dot dot-c" />
+      </div>
+      <Badge tone="cyan">YOUR TREASURY WORKSPACE</Badge>
+      <h1>Start with a clear picture.</h1>
+      <p>
+        Add the assets in your treasury and ReservePilot will give you a
+        real-time view of reserve coverage, operating runway, and market risk.
+      </p>
+      <NavLink className="button primary" to="/treasury">
+        <Plus size={16} /> Set up your treasury <ArrowRight size={15} />
+      </NavLink>
+      <div className="empty-steps">
+        <span>
+          <i>01</i> Add holdings
+        </span>
+        <span>
+          <i>02</i> Set monthly burn
+        </span>
+        <span>
+          <i>03</i> Track runway
+        </span>
+      </div>
+      <NavLink to="/welcome" className="text-link">
+        Back to welcome <ArrowRight size={13} />
+      </NavLink>
+    </div>
+  );
+}
+function Welcome() {
+  return (
+    <div className="welcome">
+      <div className="welcome-top">
+        <div className="brand-mark">
+          <Shield size={21} />
+        </div>
+        <span>
+          reserve<span className="brand-light">pilot</span>
+        </span>
+        <Badge tone="cyan">TREASURY INTELLIGENCE</Badge>
+      </div>
+      <div className="welcome-hero">
+        <div className="hero-copy">
+          <Badge tone="cyan" pulse>
+            INSTITUTIONAL TREASURY PLANNING
+          </Badge>
+          <h1>
+            Clarity for your
+            <br />
+            <span>treasury decisions.</span>
+          </h1>
+          <p>
+            Understand your runway. Protect your reserves. Make every allocation
+            with confidence.
+          </p>
+          <div className="hero-buttons">
+            <NavLink className="button primary" to="/overview">
+              Open your cockpit <ArrowRight size={16} />
+            </NavLink>
+            <NavLink className="button" to="/empty">
+              Set up a treasury <ChevronRight size={15} />
+            </NavLink>
+          </div>
+          <div className="trust-row">
+            <span>
+              <i className="green">●</i> Verified market data
+            </span>
+            <span>
+              <i className="cyan">●</i> Transparent audit trail
+            </span>
+          </div>
+        </div>
+        <div className="hero-preview">
+          <div className="preview-window">
+            <div className="preview-top">
+              <span />
+              <span />
+              <span />
+              <b>ORBIT LABS · EXECUTIVE COCKPIT</b>
+              <Badge pulse>LIVE</Badge>
+            </div>
+            <div className="preview-title">
+              <div>
+                <small>TOTAL TREASURY VALUE</small>
+                <strong>$180,420.58</strong>
+                <span className="green">
+                  ↗ 2.4% <small>today</small>
+                </span>
+              </div>
+              <div className="preview-runway">
+                <Gauge size={16} />
+                <span>
+                  5.15 mo
+                  <br />
+                  <small>RUNWAY</small>
+                </span>
+              </div>
+            </div>
+            <div className="preview-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient
+                      id="previewFill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="#3b82f6"
+                        stopOpacity={0.35}
+                      />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <Area
+                    dataKey="v"
+                    type="monotone"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="url(#previewFill)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="preview-assets">
+              {tokens.map((t) => (
+                <div key={t.symbol}>
+                  <span className={`coin ${t.tone}`}>{t.icon}</span>
+                  <b>{t.symbol}</b>
+                  <span className="mono">{t.value}</span>
+                  <span className="green">{t.change}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="float-card float-status">
+            <span className="status-check">
+              <Check size={15} />
+            </span>
+            <span>
+              <b>Solvency target met</b>
+              <small>5.15 months runway</small>
+            </span>
+          </div>
+          <div className="float-card float-oracle">
+            <span className="pulse" />
+            <span>
+              <small>MARKET ORACLE</small>
+              <b>All systems operational</b>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="welcome-features">
+        <div>
+          <span className="feature-icon">
+            <Gauge size={19} />
+          </span>
+          <b>Know your runway</b>
+          <p>See how long your treasury can support operations.</p>
+        </div>
+        <div>
+          <span className="feature-icon">
+            <Shield size={19} />
+          </span>
+          <b>Protect your reserves</b>
+          <p>Model risk and build a practical reserve plan.</p>
+        </div>
+        <div>
+          <span className="feature-icon">
+            <FileCheck2 size={19} />
+          </span>
+          <b>Show your work</b>
+          <p>Export a transparent, verifiable evidence trail.</p>
+        </div>
+      </div>
+      <div className="welcome-footer">
+        Built for accountable treasury management <span>·</span> Secure by
+        design <span>·</span>{" "}
+        <NavLink to="/overview">
+          Go to dashboard <ArrowRight size={12} />
+        </NavLink>
+      </div>
+    </div>
+  );
+}
+function Stale() {
+  return (
+    <div className="stale-wrap">
+      <div className="stale-icon">
+        <RefreshCw size={23} />
+        <span>!</span>
+      </div>
+      <Badge tone="amber">DATA CONNECTION INTERRUPTED</Badge>
+      <h1>Market data is delayed.</h1>
+      <p>
+        We couldn’t refresh prices from the market oracle. Your last known
+        values are still available below, but may not reflect current market
+        conditions.
+      </p>
+      <div className="stale-time">
+        <Clock3 size={15} /> Last successful sync <b>Today at 09:42 UTC</b>
+      </div>
+      <Panel
+        title="Last known portfolio value"
+        sub="Values from your most recent successful sync"
+      >
+        <div className="stale-value">
+          $180,420.58 <Badge tone="amber">STALE · 18 MIN AGO</Badge>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ASSET</th>
+                <th>LAST PRICE</th>
+                <th>LAST VALUE</th>
+                <th>SYNCED</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokens.map((t) => (
+                <tr key={t.symbol}>
+                  <td>
+                    <b>{t.symbol}</b>
+                  </td>
+                  <td className="mono">{t.price}</td>
+                  <td className="mono">{t.value}</td>
+                  <td>09:42 UTC</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+      <div className="stale-actions">
+        <Button kind="primary">
+          <RefreshCw size={15} /> Try reconnecting
+        </Button>
+        <NavLink className="button" to="/settings">
+          <Settings size={15} /> Check oracle settings
+        </NavLink>
+      </div>
+      <p className="stale-help">
+        <CircleHelp size={14} /> Your holdings are safe. Reconnecting only
+        refreshes market prices.
+      </p>
+    </div>
+  );
+}
 
-function LiveStatus(){const {loading,error,lastSync,refresh}=useStore();return <>{error&&<div className="callout warn-small"><AlertTriangle size={17}/><p>{error} Configure <b>VITE_CMC_API_KEY</b> and restart Vite if needed.</p><Button onClick={()=>void refresh()}><RefreshCw size={14}/> Retry</Button></div>}<div className="sync-line"><span className="pulse"/> {loading?'FETCHING LIVE QUOTES':'COINMARKETCAP DATA'} <span>{lastSync==='Never'?'Not synced yet':`Synced ${new Date(lastSync).toLocaleTimeString()}`}</span></div></>}
-function LiveAssetTable(){const {rows}=usePortfolio();const {remove}=useStore();return <><CsvTools/><div className="table-scroll"><table><thead><tr><th>ASSET</th><th>QUANTITY</th><th>PRICE</th><th>24H CHANGE</th><th className="right">VALUE</th><th>ACTION</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td><div className="asset-cell"><span className="coin cyan">{row.symbol[0]}</span><div><b>{row.symbol}</b><small>{row.quote?.name||row.name}</small></div></div></td><td className="mono">{row.amount.toLocaleString()}</td><td className="mono">{row.quote?money(row.quote.price):'Not quoted'}</td><td className={`mono ${row.quote&&row.quote.change<0?'red':'green'}`}>{row.quote?`${row.quote.change>=0?'+':''}${row.quote.change.toFixed(2)}%`:'-'}</td><td className="mono right">{money(row.value)}</td><td><button className="text-link" onClick={()=>void remove(row.id)}>Remove</button></td></tr>)}</tbody></table>{!rows.length&&<div className="empty-table">No holdings yet. Add an asset to connect live market data.</div>}</div></>}
-function CsvTools(){const {holdings,add}=useStore();const exportCsv=()=>{const csv=['symbol,name,amount',...holdings.map(item=>[item.symbol,item.name,item.amount].map(value=>`"${String(value).replaceAll('"','""')}"`).join(','))].join('\n');downloadFile('reservepilot-holdings.csv',csv,'text/csv')};const importCsv=async(event:React.ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];if(!file)return;const lines=(await file.text()).split(/\r?\n/).slice(1);for(const line of lines){const [symbol,name,amount]=line.split(',').map(value=>value.replace(/^"|"$/g,''));if(symbol&&Number(amount)>0)await add({symbol,name:name||symbol,amount:Number(amount)})}event.target.value=''};return <div className="page-actions"><Button onClick={exportCsv}><Download size={15}/> CSV</Button><label className="button"><Plus size={15}/> Import CSV<input className="sr-only" type="file" accept=".csv,text/csv" onChange={importCsv}/></label></div>}
-function LiveDashboard(){const {total,stable,runway}=usePortfolio();const {snapshots,refresh,snapshot,loading}=useStore();const chart=snapshots.map(item=>({d:new Date(item.at).toLocaleDateString(),v:item.value/1000}));return <><PageHead title="Executive cockpit" desc="A live view of your treasury health, runway, and reserve position."><Badge tone="cyan" pulse>LIVE DATA</Badge><Button onClick={()=>{void refresh();snapshot()}}><RefreshCw size={15}/>{loading?' Refreshing...':' Refresh data'}</Button><NavLink to="/treasury" className="button primary"><SlidersHorizontal size={15}/> Edit treasury</NavLink></PageHead><LiveStatus/>{!total&&<div className="callout plan-callout"><div className="callout-icon amber-icon"><Wallet size={18}/></div><div className="callout-copy"><b>No holdings configured</b><p>Add assets to start fetching live CoinMarketCap prices.</p></div><NavLink className="button primary" to="/token"><Plus size={14}/> Add asset</NavLink></div>}<div className="metric-grid"><Metric label="TOTAL TREASURY VALUE" value={money(total)} detail={`${snapshots.length} snapshots`} delta={total?'Live quote':'No holdings'} icon={Wallet}/><Metric label="MONTHLY OPERATING BURN" value="$35,000" detail="Configure in treasury" delta="USD" tone="cyan" icon={CalendarClock}/><Metric label="CURRENT RUNWAY" value={`${runway.toFixed(2)} mo`} detail="Based on live value" delta={runway>=3?'Covered':'Below target'} icon={Gauge}/><Metric label="STABLE RESERVE RATIO" value={`${total?(stable/total*100).toFixed(1):'0.0'}%`} detail="USDC, USDT and DAI" delta="Live" tone="amber" icon={Coins}/></div><div className="dashboard-grid"><Panel title="Treasury performance" sub="Saved valuations · USD" action={<Button onClick={snapshot}><Plus size={14}/> Snapshot</Button>}><div className="chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><CartesianGrid stroke="#1e293b" vertical={false}/><XAxis dataKey="d"/><YAxis/><Tooltip/><Area type="monotone" dataKey="v" stroke="#3b82f6" fill="#3b82f633"/></AreaChart></ResponsiveContainer></div></Panel><Panel title="Runway coverage" sub="Available treasury against monthly burn"><div className="runway-visual"><div className="runway-number">{runway.toFixed(2)}<span> months</span></div><div className="runway-track"><div style={{width:`${Math.min(runway/6*100,100)}%`}}/></div></div><div className="runway-breakdown"><div><span>Total treasury</span><b className="mono">{money(total)}</b></div><div><span>Stable reserves</span><b className="mono">{money(stable)}</b></div><div><span>Monthly burn</span><b className="mono">$35,000</b></div></div></Panel></div><Panel title="Asset allocation" sub="Current holdings · live prices"><LiveAssetTable/></Panel></>}
-function LiveTreasury(){const [tab,setTab]=useState('Holdings');const {refresh,snapshot,holdings}=useStore();return <><PageHead title="Treasury setup" desc="Manage the real holdings used by ReservePilot."><Button onClick={()=>download('reservepilot-holdings.json',holdings)}><Download size={15}/> Export</Button><NavLink className="button primary" to="/token"><Plus size={15}/> Add asset</NavLink></PageHead><LiveStatus/><div className="tabs">{['Holdings','Operating costs','Risk parameters'].map(item=><button onClick={()=>setTab(item)} className={tab===item?'tab-active':''} key={item}>{item}</button>)}</div>{tab==='Holdings'?<><Panel title="Treasury holdings" sub="Only assets entered in this workspace are valued"><LiveAssetTable/><div className="table-foot"><span>Prices provided by CoinMarketCap</span><Button onClick={()=>{void refresh();snapshot()}}><RefreshCw size={12}/> Refresh prices</Button></div></Panel><LiveProfile/></>:<LiveProfile tab={tab}/>}</>}
-function LiveProfile({tab='Operating costs'}:{tab?:string}){const {settings,saveSettings}=useStore();const [draft,setDraft]=useState(settings);const [saved,setSaved]=useState(false);useEffect(()=>setDraft(settings),[settings]);return <Panel title={tab==='Operating costs'?'Monthly operating costs':'Risk parameters'} sub="Stored securely in your Supabase client profile."><div className="form-grid"><label>Workspace name<input className="field" value={draft.companyName} onChange={event=>setDraft({...draft,companyName:event.target.value})}/></label><label>Monthly burn rate<input className="field" type="number" min="0" value={draft.monthlyBurn} onChange={event=>setDraft({...draft,monthlyBurn:Number(event.target.value)})}/></label><label>Reserve target<input className="field" type="number" min="1" step="0.5" value={draft.reserveTargetMonths} onChange={event=>setDraft({...draft,reserveTargetMonths:Number(event.target.value)})}/></label><label>Quote refresh<select className="field" value={draft.refreshInterval} onChange={event=>setDraft({...draft,refreshInterval:Number(event.target.value)})}><option value="0">On demand</option><option value="5">Every 5 minutes</option><option value="15">Every 15 minutes</option><option value="60">Every hour</option></select></label></div><div className="panel-foot"><span className="muted">{saved?'Saved just now':'Not saved'}</span><Button kind="primary" onClick={()=>{void saveSettings(draft);setSaved(true)}}>Save changes</Button></div></Panel>}
-function LiveToken(){const navigate=useNavigate();const {add}=useStore();const [symbol,setSymbol]=useState('');const [name,setName]=useState('');const [amount,setAmount]=useState('');const [error,setError]=useState('');const [saving,setSaving]=useState(false);const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!symbol.trim()||Number(amount)<=0){setError('Enter a symbol and a positive quantity.');return}setSaving(true);setError('');const saved=await add({symbol:symbol.trim(),name:name.trim()||symbol.trim().toUpperCase(),amount:Number(amount)});setSaving(false);if(saved)navigate('/treasury')};return <><PageHead title="Add asset" desc="Register a real holding so ReservePilot can fetch its live quote."><NavLink className="button" to="/treasury"><X size={15}/> Close</NavLink></PageHead><form className="modal-card" onSubmit={submit}><div className="modal-title"><div className="callout-icon"><Coins size={20}/></div><div><h2>Add treasury holding</h2><p>Use a CoinMarketCap symbol such as BTC, ETH, or USDC.</p></div></div><label>Symbol<input className="field" value={symbol} onChange={event=>setSymbol(event.target.value)} placeholder="BTC"/></label><label>Display name<input className="field" value={name} onChange={event=>setName(event.target.value)} placeholder="Optional"/></label><label>Quantity<input className="field" type="number" min="0" step="any" value={amount} onChange={event=>setAmount(event.target.value)} placeholder="0.00"/></label>{error&&<small className="field-help red">{error}</small>}<div className="panel-foot"><NavLink to="/treasury" className="button">Cancel</NavLink><Button kind="primary" type="submit">{saving?'Saving...':<><Plus size={15}/> Add holding</>}</Button></div></form></>}
-type MarketAsset = { id:number; name:string; symbol:string; price:number; change1h:number; change24h:number; change7d:number; volume:number; marketCap:number };
-function MarketOverviewPage(){const [assets,setAssets]=useState<MarketAsset[]>([]);const [search,setSearch]=useState('');const [page,setPage]=useState(1);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const load=async()=>{setLoading(true);setError('');try{const response=await fetch('/api/market?start=1&limit=100');const body=await response.json();if(!response.ok)throw new Error(body?.status?.error_message||`Market feed returned HTTP ${response.status}.`);setAssets((body.data||[]).map((item:any)=>({id:Number(item.id),name:String(item.name||''),symbol:String(item.symbol||''),price:finiteNumber(item.quote?.USD?.price),change1h:finiteNumber(item.quote?.USD?.percent_change_1h),change24h:finiteNumber(item.quote?.USD?.percent_change_24h),change7d:finiteNumber(item.quote?.USD?.percent_change_7d),volume:finiteNumber(item.quote?.USD?.volume_24h),marketCap:finiteNumber(item.quote?.USD?.market_cap)})));}catch(requestError){setError(requestError instanceof Error?requestError.message:'Unable to load market data.')}finally{setLoading(false)}};useEffect(()=>{void load()},[]);const filtered=assets.filter(asset=>`${asset.name} ${asset.symbol}`.toLowerCase().includes(search.toLowerCase()));const pageSize=10;const pageCount=Math.max(1,Math.ceil(filtered.length/pageSize));const visible=filtered.slice((page-1)*pageSize,page*pageSize);const gainers=assets.slice().sort((a,b)=>b.change24h-a.change24h).slice(0,3);const totalVolume=assets.reduce((sum,asset)=>sum+asset.volume,0);const compact=(value:number)=>value>=1e12?`$${(value/1e12).toFixed(2)}T`:value>=1e9?`$${(value/1e9).toFixed(2)}B`:value>=1e6?`$${(value/1e6).toFixed(2)}M`:`$${value.toLocaleString('en-US',{maximumFractionDigits:0})}`;return <><PageHead eyebrow="MARKETS / GLOBAL INTELLIGENCE" title="Market overview" desc="Live prices, market capitalization, volume, and momentum across the broader crypto market."><Badge tone="cyan" pulse>{loading?'SYNCING':'CMC LIVE'}</Badge><Button onClick={()=>void load()}><RefreshCw size={15}/> Refresh</Button></PageHead>{error&&<div className="callout warn-small"><AlertTriangle size={17}/><p>{error} Check VITE_CMC_API_KEY in Vercel.</p></div>}<div className="market-global-summary"><Metric label="ASSETS INDEXED" value={`${assets.length}`} detail="Top live listings" delta="CMC" icon={Globe2}/><Metric label="24H MARKET VOLUME" value={compact(totalVolume)} detail="Across loaded listings" delta="Live" tone="cyan" icon={Activity}/><Metric label="TOP GAINER" value={gainers[0]?`+${gainers[0].change24h.toFixed(1)}%`:'-'} detail={gainers[0]?.symbol||'Waiting for feed'} delta="24h" icon={ArrowUpRight}/></div><div className="global-market-grid"><Panel title="Momentum leaders" sub="Largest 24h moves in the loaded market"><div className="market-rank-list">{gainers.map(asset=><div className="market-rank" key={asset.id}><span className="coin cyan">{asset.symbol[0]}</span><div><b>{asset.symbol}</b><small>{asset.name}</small></div><strong className={asset.change24h>=0?'green':'red'}>{asset.change24h>=0?'+':''}{asset.change24h.toFixed(2)}%</strong></div>)}</div></Panel><Panel title="Market data coverage" sub="CoinMarketCap listings endpoint"><div className="global-market-note"><Globe2 size={20}/><div><b>Top 100 assets</b><p>Prices and market metrics refresh from the live oracle. Search the current page to find an asset quickly.</p></div></div><Button kind="primary" onClick={()=>setPage(1)}>View top assets</Button></Panel></div><Panel className="market-table-panel" title="All live crypto assets" sub={`${filtered.length} matching assets from ${assets.length} loaded listings`}><div className="market-filter-bar"><label className="market-search"><Search size={15}/><input value={search} onChange={event=>{setSearch(event.target.value);setPage(1)}} placeholder="Search by name or symbol"/></label><span className="market-feed-status"><i className="pulse"/> UPDATED LIVE</span></div><div className="table-scroll"><table className="market-table global-market-table"><thead><tr><th>#</th><th>ASSET</th><th className="right">PRICE</th><th className="right">24H</th><th className="right">7D</th><th className="right">VOLUME</th><th className="right">MARKET CAP</th></tr></thead><tbody>{visible.map((asset,index)=><tr key={asset.id}><td className="mono">{(page-1)*pageSize+index+1}</td><td><div className="asset-cell"><span className="coin cyan">{asset.symbol[0]}</span><div><b>{asset.name}</b><small>{asset.symbol}</small></div></div></td><td className="mono right">{money(asset.price)}</td><td className={`mono right ${asset.change24h>=0?'green':'red'}`}>{asset.change24h>=0?'+':''}{asset.change24h.toFixed(2)}%</td><td className={`mono right ${asset.change7d>=0?'green':'red'}`}>{asset.change7d>=0?'+':''}{asset.change7d.toFixed(2)}%</td><td className="mono right">{compact(asset.volume)}</td><td className="mono right">{compact(asset.marketCap)}</td></tr>)}</tbody></table>{loading&&<div className="empty-table">Loading live market assets...</div>}{!loading&&!visible.length&&<div className="empty-table">No assets match your search.</div>}</div><div className="market-pagination"><span>Page {page} of {pageCount}</span><div><Button onClick={()=>setPage(current=>Math.max(1,current-1))}>Previous</Button><Button onClick={()=>setPage(current=>Math.min(pageCount,current+1))}>Next</Button></div></div></Panel></>}
+function LiveStatus() {
+  const { loading, error, lastSync, refresh } = useStore();
+  return (
+    <>
+      {error && (
+        <div className="callout warn-small">
+          <AlertTriangle size={17} />
+          <p>
+            {error} Configure <b>VITE_CMC_API_KEY</b> and restart Vite if
+            needed.
+          </p>
+          <Button onClick={() => void refresh()}>
+            <RefreshCw size={14} /> Retry
+          </Button>
+        </div>
+      )}
+      <div className="sync-line">
+        <span className="pulse" />{" "}
+        {loading ? "FETCHING LIVE QUOTES" : "COINMARKETCAP DATA"}{" "}
+        <span>
+          {lastSync === "Never"
+            ? "Not synced yet"
+            : `Synced ${new Date(lastSync).toLocaleTimeString()}`}
+        </span>
+      </div>
+    </>
+  );
+}
+function LiveAssetTable() {
+  const { rows } = usePortfolio();
+  const { remove } = useStore();
+  return (
+    <>
+      <CsvTools />
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ASSET</th>
+              <th>QUANTITY</th>
+              <th>PRICE</th>
+              <th>24H CHANGE</th>
+              <th className="right">VALUE</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <div className="asset-cell">
+                    <span className="coin cyan">{row.symbol[0]}</span>
+                    <div>
+                      <b>{row.symbol}</b>
+                      <small>{row.quote?.name || row.name}</small>
+                    </div>
+                  </div>
+                </td>
+                <td className="mono">{row.amount.toLocaleString()}</td>
+                <td className="mono">
+                  {row.quote ? money(row.quote.price) : "Not quoted"}
+                </td>
+                <td
+                  className={`mono ${row.quote && row.quote.change < 0 ? "red" : "green"}`}
+                >
+                  {row.quote
+                    ? `${row.quote.change >= 0 ? "+" : ""}${row.quote.change.toFixed(2)}%`
+                    : "-"}
+                </td>
+                <td className="mono right">{money(row.value)}</td>
+                <td>
+                  <button
+                    className="text-link"
+                    onClick={() => void remove(row.id)}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && (
+          <div className="empty-table">
+            No holdings yet. Add an asset to connect live market data.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+function CsvTools() {
+  const { holdings, add } = useStore();
+  const exportCsv = () => {
+    const csv = [
+      "symbol,name,amount",
+      ...holdings.map((item) =>
+        [item.symbol, item.name, item.amount]
+          .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+          .join(","),
+      ),
+    ].join("\n");
+    downloadFile("reservepilot-holdings.csv", csv, "text/csv");
+  };
+  const importCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const lines = (await file.text()).split(/\r?\n/).slice(1);
+    for (const line of lines) {
+      const [symbol, name, amount] = line
+        .split(",")
+        .map((value) => value.replace(/^"|"$/g, ""));
+      if (symbol && Number(amount) > 0)
+        await add({ symbol, name: name || symbol, amount: Number(amount) });
+    }
+    event.target.value = "";
+  };
+  return (
+    <div className="page-actions">
+      <Button onClick={exportCsv}>
+        <Download size={15} /> CSV
+      </Button>
+      <label className="button">
+        <Plus size={15} /> Import CSV
+        <input
+          className="sr-only"
+          type="file"
+          accept=".csv,text/csv"
+          onChange={importCsv}
+        />
+      </label>
+    </div>
+  );
+}
+function LiveDashboard() {
+  const { total, stable, runway } = usePortfolio();
+  const { snapshots, refresh, snapshot, loading } = useStore();
+  const chart = snapshots.map((item) => ({
+    d: new Date(item.at).toLocaleDateString(),
+    v: item.value / 1000,
+  }));
+  return (
+    <>
+      <PageHead
+        title="Executive cockpit"
+        desc="A live view of your treasury health, runway, and reserve position."
+      >
+        <Badge tone="cyan" pulse>
+          LIVE DATA
+        </Badge>
+        <Button
+          onClick={async () => {
+            const freshQuotes = await refresh();
+            await snapshot(freshQuotes);
+          }}
+        >
+          <RefreshCw size={15} />
+          {loading ? " Refreshing..." : " Refresh data"}
+        </Button>
+        <NavLink to="/treasury" className="button primary">
+          <SlidersHorizontal size={15} /> Edit treasury
+        </NavLink>
+      </PageHead>
+      <LiveStatus />
+      {!total && (
+        <div className="callout plan-callout">
+          <div className="callout-icon amber-icon">
+            <Wallet size={18} />
+          </div>
+          <div className="callout-copy">
+            <b>No holdings configured</b>
+            <p>Add assets to start fetching live CoinMarketCap prices.</p>
+          </div>
+          <NavLink className="button primary" to="/token">
+            <Plus size={14} /> Add asset
+          </NavLink>
+        </div>
+      )}
+      <div className="metric-grid">
+        <Metric
+          label="TOTAL TREASURY VALUE"
+          value={money(total)}
+          detail={`${snapshots.length} snapshots`}
+          delta={total ? "Live quote" : "No holdings"}
+          icon={Wallet}
+        />
+        <Metric
+          label="MONTHLY OPERATING BURN"
+          value="$35,000"
+          detail="Configure in treasury"
+          delta="USD"
+          tone="cyan"
+          icon={CalendarClock}
+        />
+        <Metric
+          label="CURRENT RUNWAY"
+          value={`${runway.toFixed(2)} mo`}
+          detail="Based on live value"
+          delta={runway >= 3 ? "Covered" : "Below target"}
+          icon={Gauge}
+        />
+        <Metric
+          label="STABLE RESERVE RATIO"
+          value={`${total ? ((stable / total) * 100).toFixed(1) : "0.0"}%`}
+          detail="USDC, USDT and DAI"
+          delta="Live"
+          tone="amber"
+          icon={Coins}
+        />
+      </div>
+      <div className="dashboard-grid">
+        <Panel
+          title="Treasury performance"
+          sub="Saved valuations · USD"
+          action={
+            <Button onClick={snapshot}>
+              <Plus size={14} /> Snapshot
+            </Button>
+          }
+        >
+          <div className="chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chart}>
+                <CartesianGrid stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="d" />
+                <YAxis />
+                <Tooltip />
+                <Area
+                  type="monotone"
+                  dataKey="v"
+                  stroke="#3b82f6"
+                  fill="#3b82f633"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+        <Panel
+          title="Runway coverage"
+          sub="Available treasury against monthly burn"
+        >
+          <div className="runway-visual">
+            <div className="runway-number">
+              {runway.toFixed(2)}
+              <span> months</span>
+            </div>
+            <div className="runway-track">
+              <div style={{ width: `${Math.min((runway / 6) * 100, 100)}%` }} />
+            </div>
+          </div>
+          <div className="runway-breakdown">
+            <div>
+              <span>Total treasury</span>
+              <b className="mono">{money(total)}</b>
+            </div>
+            <div>
+              <span>Stable reserves</span>
+              <b className="mono">{money(stable)}</b>
+            </div>
+            <div>
+              <span>Monthly burn</span>
+              <b className="mono">$35,000</b>
+            </div>
+          </div>
+        </Panel>
+      </div>
+      <Panel title="Asset allocation" sub="Current holdings · live prices">
+        <LiveAssetTable />
+      </Panel>
+    </>
+  );
+}
+function LiveTreasury() {
+  const [tab, setTab] = useState("Holdings");
+  const { refresh, snapshot, holdings } = useStore();
+  return (
+    <>
+      <PageHead
+        title="Treasury setup"
+        desc="Manage the real holdings used by ReservePilot."
+      >
+        <Button
+          onClick={() => download("reservepilot-holdings.json", holdings)}
+        >
+          <Download size={15} /> Export
+        </Button>
+        <NavLink className="button primary" to="/token">
+          <Plus size={15} /> Add asset
+        </NavLink>
+      </PageHead>
+      <LiveStatus />
+      <div className="tabs">
+        {["Holdings", "Operating costs", "Risk parameters"].map((item) => (
+          <button
+            onClick={() => setTab(item)}
+            className={tab === item ? "tab-active" : ""}
+            key={item}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      {tab === "Holdings" ? (
+        <>
+          <Panel
+            title="Treasury holdings"
+            sub="Only assets entered in this workspace are valued"
+          >
+            <LiveAssetTable />
+            <div className="table-foot">
+              <span>Prices provided by CoinMarketCap</span>
+              <Button
+                onClick={async () => {
+                  const freshQuotes = await refresh();
+                  await snapshot(freshQuotes);
+                }}
+              >
+                <RefreshCw size={12} /> Refresh prices
+              </Button>
+            </div>
+          </Panel>
+          <LiveProfile />
+        </>
+      ) : (
+        <LiveProfile tab={tab} />
+      )}
+    </>
+  );
+}
+function LiveProfile({ tab = "Operating costs" }: { tab?: string }) {
+  const { settings, saveSettings } = useStore();
+  const [draft, setDraft] = useState(settings);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setDraft(settings), [settings]);
+  return (
+    <Panel
+      title={
+        tab === "Operating costs"
+          ? "Monthly operating costs"
+          : "Risk parameters"
+      }
+      sub="Stored securely in your Supabase client profile."
+    >
+      <div className="form-grid">
+        <label>
+          Workspace name
+          <input
+            className="field"
+            value={draft.companyName}
+            onChange={(event) =>
+              setDraft({ ...draft, companyName: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          Monthly burn rate
+          <input
+            className="field"
+            type="number"
+            min="0"
+            value={draft.monthlyBurn}
+            onChange={(event) =>
+              setDraft({ ...draft, monthlyBurn: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          Reserve target
+          <input
+            className="field"
+            type="number"
+            min="1"
+            step="0.5"
+            value={draft.reserveTargetMonths}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                reserveTargetMonths: Number(event.target.value),
+              })
+            }
+          />
+        </label>
+        <label>
+          Quote refresh
+          <select
+            className="field"
+            value={draft.refreshInterval}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                refreshInterval: Number(event.target.value),
+              })
+            }
+          >
+            <option value="0">On demand</option>
+            <option value="5">Every 5 minutes</option>
+            <option value="15">Every 15 minutes</option>
+            <option value="60">Every hour</option>
+          </select>
+        </label>
+      </div>
+      <div className="panel-foot">
+        <span className="muted">{saved ? "Saved just now" : "Not saved"}</span>
+        <Button
+          kind="primary"
+          onClick={() => {
+            void saveSettings(draft);
+            setSaved(true);
+          }}
+        >
+          Save changes
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+function LiveToken() {
+  const navigate = useNavigate();
+  const { add } = useStore();
+  const [symbol, setSymbol] = useState("");
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!symbol.trim() || Number(amount) <= 0) {
+      setError("Enter a symbol and a positive quantity.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const saved = await add({
+      symbol: symbol.trim(),
+      name: name.trim() || symbol.trim().toUpperCase(),
+      amount: Number(amount),
+    });
+    setSaving(false);
+    if (saved) navigate("/treasury");
+  };
+  return (
+    <>
+      <PageHead
+        title="Add asset"
+        desc="Register a real holding so ReservePilot can fetch its live quote."
+      >
+        <NavLink className="button" to="/treasury">
+          <X size={15} /> Close
+        </NavLink>
+      </PageHead>
+      <form className="modal-card" onSubmit={submit}>
+        <div className="modal-title">
+          <div className="callout-icon">
+            <Coins size={20} />
+          </div>
+          <div>
+            <h2>Add treasury holding</h2>
+            <p>Use a CoinMarketCap symbol such as BTC, ETH, or USDC.</p>
+          </div>
+        </div>
+        <label>
+          Symbol
+          <input
+            className="field"
+            value={symbol}
+            onChange={(event) => setSymbol(event.target.value)}
+            placeholder="BTC"
+          />
+        </label>
+        <label>
+          Display name
+          <input
+            className="field"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+        <label>
+          Quantity
+          <input
+            className="field"
+            type="number"
+            min="0"
+            step="any"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="0.00"
+          />
+        </label>
+        {error && <small className="field-help red">{error}</small>}
+        <div className="panel-foot">
+          <NavLink to="/treasury" className="button">
+            Cancel
+          </NavLink>
+          <Button kind="primary" type="submit">
+            {saving ? (
+              "Saving..."
+            ) : (
+              <>
+                <Plus size={15} /> Add holding
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+    </>
+  );
+}
+type MarketAsset = {
+  id: number;
+  name: string;
+  symbol: string;
+  price: number;
+  change1h: number;
+  change24h: number;
+  change7d: number;
+  volume: number;
+  marketCap: number;
+};
+function MarketOverviewPage() {
+  const [assets, setAssets] = useState<MarketAsset[]>([]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/market?start=1&limit=100");
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(
+          body?.status?.error_message ||
+            `Market feed returned HTTP ${response.status}.`,
+        );
+      setAssets(
+        (body.data || []).map((item: any) => ({
+          id: Number(item.id),
+          name: String(item.name || ""),
+          symbol: String(item.symbol || ""),
+          price: finiteNumber(item.quote?.USD?.price),
+          change1h: finiteNumber(item.quote?.USD?.percent_change_1h),
+          change24h: finiteNumber(item.quote?.USD?.percent_change_24h),
+          change7d: finiteNumber(item.quote?.USD?.percent_change_7d),
+          volume: finiteNumber(item.quote?.USD?.volume_24h),
+          marketCap: finiteNumber(item.quote?.USD?.market_cap),
+        })),
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load market data.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const filtered = assets.filter((asset) =>
+    `${asset.name} ${asset.symbol}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const gainers = assets
+    .slice()
+    .sort((a, b) => b.change24h - a.change24h)
+    .slice(0, 3);
+  const totalVolume = assets.reduce((sum, asset) => sum + asset.volume, 0);
+  const compact = (value: number) =>
+    value >= 1e12
+      ? `$${(value / 1e12).toFixed(2)}T`
+      : value >= 1e9
+        ? `$${(value / 1e9).toFixed(2)}B`
+        : value >= 1e6
+          ? `$${(value / 1e6).toFixed(2)}M`
+          : `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  return (
+    <>
+      <PageHead
+        eyebrow="MARKETS / GLOBAL INTELLIGENCE"
+        title="Market overview"
+        desc="Live prices, market capitalization, volume, and momentum across the broader crypto market."
+      >
+        <Badge tone="cyan" pulse>
+          {loading ? "SYNCING" : "CMC LIVE"}
+        </Badge>
+        <Button onClick={() => void load()}>
+          <RefreshCw size={15} /> Refresh
+        </Button>
+      </PageHead>
+      {error && (
+        <div className="callout warn-small">
+          <AlertTriangle size={17} />
+          <p>{error} Check VITE_CMC_API_KEY in Vercel.</p>
+        </div>
+      )}
+      <div className="market-global-summary">
+        <Metric
+          label="ASSETS INDEXED"
+          value={`${assets.length}`}
+          detail="Top live listings"
+          delta="CMC"
+          icon={Globe2}
+        />
+        <Metric
+          label="24H MARKET VOLUME"
+          value={compact(totalVolume)}
+          detail="Across loaded listings"
+          delta="Live"
+          tone="cyan"
+          icon={Activity}
+        />
+        <Metric
+          label="TOP GAINER"
+          value={gainers[0] ? `+${gainers[0].change24h.toFixed(1)}%` : "-"}
+          detail={gainers[0]?.symbol || "Waiting for feed"}
+          delta="24h"
+          icon={ArrowUpRight}
+        />
+      </div>
+      <div className="global-market-grid">
+        <Panel
+          title="Momentum leaders"
+          sub="Largest 24h moves in the loaded market"
+        >
+          <div className="market-rank-list">
+            {gainers.map((asset) => (
+              <div className="market-rank" key={asset.id}>
+                <span className="coin cyan">{asset.symbol[0]}</span>
+                <div>
+                  <b>{asset.symbol}</b>
+                  <small>{asset.name}</small>
+                </div>
+                <strong className={asset.change24h >= 0 ? "green" : "red"}>
+                  {asset.change24h >= 0 ? "+" : ""}
+                  {asset.change24h.toFixed(2)}%
+                </strong>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel
+          title="Market data coverage"
+          sub="CoinMarketCap listings endpoint"
+        >
+          <div className="global-market-note">
+            <Globe2 size={20} />
+            <div>
+              <b>Top 100 assets</b>
+              <p>
+                Prices and market metrics refresh from the live oracle. Search
+                the current page to find an asset quickly.
+              </p>
+            </div>
+          </div>
+          <Button kind="primary" onClick={() => setPage(1)}>
+            View top assets
+          </Button>
+        </Panel>
+      </div>
+      <Panel
+        className="market-table-panel"
+        title="All live crypto assets"
+        sub={`${filtered.length} matching assets from ${assets.length} loaded listings`}
+      >
+        <div className="market-filter-bar">
+          <label className="market-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by name or symbol"
+            />
+          </label>
+          <span className="market-feed-status">
+            <i className="pulse" /> UPDATED LIVE
+          </span>
+        </div>
+        <div className="table-scroll">
+          <table className="market-table global-market-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ASSET</th>
+                <th className="right">PRICE</th>
+                <th className="right">24H</th>
+                <th className="right">7D</th>
+                <th className="right">VOLUME</th>
+                <th className="right">MARKET CAP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((asset, index) => (
+                <tr key={asset.id}>
+                  <td className="mono">{(page - 1) * pageSize + index + 1}</td>
+                  <td>
+                    <div className="asset-cell">
+                      <span className="coin cyan">{asset.symbol[0]}</span>
+                      <div>
+                        <b>{asset.name}</b>
+                        <small>{asset.symbol}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="mono right">{money(asset.price)}</td>
+                  <td
+                    className={`mono right ${asset.change24h >= 0 ? "green" : "red"}`}
+                  >
+                    {asset.change24h >= 0 ? "+" : ""}
+                    {asset.change24h.toFixed(2)}%
+                  </td>
+                  <td
+                    className={`mono right ${asset.change7d >= 0 ? "green" : "red"}`}
+                  >
+                    {asset.change7d >= 0 ? "+" : ""}
+                    {asset.change7d.toFixed(2)}%
+                  </td>
+                  <td className="mono right">{compact(asset.volume)}</td>
+                  <td className="mono right">{compact(asset.marketCap)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {loading && (
+            <div className="empty-table">Loading live market assets...</div>
+          )}
+          {!loading && !visible.length && (
+            <div className="empty-table">No assets match your search.</div>
+          )}
+        </div>
+        <div className="market-pagination">
+          <span>
+            Page {page} of {pageCount}
+          </span>
+          <div>
+            <Button
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              onClick={() =>
+                setPage((current) => Math.min(pageCount, current + 1))
+              }
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function MarketPage(){const {rows,total,stable}=usePortfolio();const {refresh,loading}=useStore();const [search,setSearch]=useState('');const [view,setView]=useState('All assets');const navigate=useNavigate();const quotedRows=rows.filter(row=>row.quote);const gainers=quotedRows.slice().sort((a,b)=>(b.quote?.change||0)-(a.quote?.change||0)).slice(0,3);const filteredRows=quotedRows.filter(row=>view==='Stablecoins'?['USDC','USDT','DAI'].includes(row.symbol):view==='Gainers'?(row.quote?.change||0)>0:true).filter(row=>`${row.symbol} ${row.name}`.toLowerCase().includes(search.toLowerCase()));const averageChange=quotedRows.length?quotedRows.reduce((sum,row)=>sum+(row.quote?.change||0),0)/quotedRows.length:0;return <><PageHead eyebrow="MARKETS / INTELLIGENCE OVERVIEW" title="Treasury market" desc="Live market context for the assets backing your treasury."><Badge tone="cyan" pulse>{loading?'SYNCING FEED':'FEED SYNCHRONIZED'}</Badge><Button onClick={()=>void refresh()}><RefreshCw size={15}/>{loading?' Refreshing...':' Refresh data'}</Button><Button kind="primary" onClick={()=>navigate('/market-overview')}><Globe2 size={15}/> Global market</Button></PageHead><LiveStatus/><div className="market-summary-grid"><Panel className="market-summary-card market-cap-card" title="Treasury capitalization" sub="Current value of quoted holdings"><strong>{money(total)}</strong><span className={averageChange>=0?'green':'red'}>{averageChange>=0?'+':''}{averageChange.toFixed(2)}% weighted daily movement</span><div className="market-sparkline"><AreaChart data={quotedRows.map((row,index)=>({index,value:row.value}))}><Area type="monotone" dataKey="value" stroke="#4cd7f6" fill="#4cd7f622" strokeWidth={2}/></AreaChart></div><div className="market-card-foot"><span>Quoted assets <b>{quotedRows.length}</b></span><span>Stable share <b>{total?(stable/total*100).toFixed(1):'0.0'}%</b></span></div></Panel><Panel className="market-summary-card" title="Momentum watch" sub="Best 24h movement in your holdings"><div className="market-rank-list">{gainers.length?gainers.map(row=><div className="market-rank" key={row.id}><span className="coin cyan">{row.symbol[0]}</span><div><b>{row.symbol}</b><small>{row.quote?.name||row.name}</small></div><strong className={(row.quote?.change||0)>=0?'green':'red'}>{(row.quote?.change||0)>=0?'+':''}{(row.quote?.change||0).toFixed(2)}%</strong></div>):<div className="empty-table">Add holdings to populate market momentum.</div>}</div><NavLink className="text-link market-card-link" to="/history">Review historical movement <ArrowRight size={13}/></NavLink></Panel><Panel className="market-summary-card" title="Reserve stability" sub="Assets designed to preserve liquidity"><div className="market-stability"><div className="stability-ring"><span>{total?(stable/total*100).toFixed(0):'0'}<small>%</small></span></div><div><b>{money(stable)}</b><small>Stablecoin value</small><span className={stable/Math.max(total,1)>=.4?'green':'amber'}>{stable/Math.max(total,1)>=.4?'Target met':'Below 40% target'}</span></div></div><div className="progress-track"><i style={{width:`${Math.min(total?stable/total*100:0,100)}%`}}/></div><NavLink className="text-link market-card-link" to="/reserve-plan">Open reserve plan <ArrowRight size={13}/></NavLink></Panel></div><div className="market-filter-bar"><div className="tabs market-tabs">{['All assets','Gainers','Stablecoins'].map(item=><button key={item} className={view===item?'tab-active':''} onClick={()=>setView(item)}>{item}</button>)}</div><label className="market-search"><Search size={15}/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search tracked assets"/></label><span className="market-feed-status"><i className="pulse"/> CMC LIVE FEED</span></div><Panel className="market-table-panel" title="Tracked market assets" sub={`${filteredRows.length} assets in this treasury scope`}><div className="table-scroll"><table className="market-table"><thead><tr><th>ASSET</th><th className="right">PRICE</th><th className="right">24H</th><th className="right">VALUE</th><th className="right">ALLOCATION</th><th/></tr></thead><tbody>{filteredRows.map(row=>{const allocation=total?row.value/total*100:0;return <tr key={row.id}><td><div className="asset-cell"><span className="coin cyan">{row.symbol[0]}</span><div><b>{row.quote?.name||row.name}</b><small>{row.symbol}{['USDC','USDT','DAI'].includes(row.symbol)?' · Stablecoin':''}</small></div></div></td><td className="mono right">{money(row.quote?.price||0)}</td><td className={`mono right ${(row.quote?.change||0)>=0?'green':'red'}`}>{(row.quote?.change||0)>=0?'+':''}{(row.quote?.change||0).toFixed(2)}%</td><td className="mono right">{money(row.value)}</td><td className="right"><div className="allocation"><span><i style={{width:`${Math.min(allocation,100)}%`}}/></span><small>{allocation.toFixed(1)}%</small></div></td><td className="right"><Button onClick={()=>navigate('/stress-test')}><Zap size={13}/> Simulate</Button></td></tr>})}</tbody></table>{!filteredRows.length&&<div className="empty-table">No quoted assets match this view. Refresh prices or add a holding.</div>}</div></Panel></>}
+function MarketPage() {
+  const { rows, total, stable } = usePortfolio();
+  const { refresh, loading } = useStore();
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState("All assets");
+  const navigate = useNavigate();
+  const quotedRows = rows.filter((row) => row.quote);
+  const gainers = quotedRows
+    .slice()
+    .sort((a, b) => (b.quote?.change || 0) - (a.quote?.change || 0))
+    .slice(0, 3);
+  const filteredRows = quotedRows
+    .filter((row) =>
+      view === "Stablecoins"
+        ? ["USDC", "USDT", "DAI"].includes(row.symbol)
+        : view === "Gainers"
+          ? (row.quote?.change || 0) > 0
+          : true,
+    )
+    .filter((row) =>
+      `${row.symbol} ${row.name}`.toLowerCase().includes(search.toLowerCase()),
+    );
+  const averageChange = quotedRows.length
+    ? quotedRows.reduce((sum, row) => sum + (row.quote?.change || 0), 0) /
+      quotedRows.length
+    : 0;
+  return (
+    <>
+      <PageHead
+        eyebrow="MARKETS / INTELLIGENCE OVERVIEW"
+        title="Treasury market"
+        desc="Live market context for the assets backing your treasury."
+      >
+        <Badge tone="cyan" pulse>
+          {loading ? "SYNCING FEED" : "FEED SYNCHRONIZED"}
+        </Badge>
+        <Button onClick={() => void refresh()}>
+          <RefreshCw size={15} />
+          {loading ? " Refreshing..." : " Refresh data"}
+        </Button>
+        <Button kind="primary" onClick={() => navigate("/market-overview")}>
+          <Globe2 size={15} /> Global market
+        </Button>
+      </PageHead>
+      <LiveStatus />
+      <div className="market-summary-grid">
+        <Panel
+          className="market-summary-card market-cap-card"
+          title="Treasury capitalization"
+          sub="Current value of quoted holdings"
+        >
+          <strong>{money(total)}</strong>
+          <span className={averageChange >= 0 ? "green" : "red"}>
+            {averageChange >= 0 ? "+" : ""}
+            {averageChange.toFixed(2)}% weighted daily movement
+          </span>
+          <div className="market-sparkline">
+            <AreaChart
+              data={quotedRows.map((row, index) => ({
+                index,
+                value: row.value,
+              }))}
+            >
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#4cd7f6"
+                fill="#4cd7f622"
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </div>
+          <div className="market-card-foot">
+            <span>
+              Quoted assets <b>{quotedRows.length}</b>
+            </span>
+            <span>
+              Stable share{" "}
+              <b>{total ? ((stable / total) * 100).toFixed(1) : "0.0"}%</b>
+            </span>
+          </div>
+        </Panel>
+        <Panel
+          className="market-summary-card"
+          title="Momentum watch"
+          sub="Best 24h movement in your holdings"
+        >
+          <div className="market-rank-list">
+            {gainers.length ? (
+              gainers.map((row) => (
+                <div className="market-rank" key={row.id}>
+                  <span className="coin cyan">{row.symbol[0]}</span>
+                  <div>
+                    <b>{row.symbol}</b>
+                    <small>{row.quote?.name || row.name}</small>
+                  </div>
+                  <strong
+                    className={(row.quote?.change || 0) >= 0 ? "green" : "red"}
+                  >
+                    {(row.quote?.change || 0) >= 0 ? "+" : ""}
+                    {(row.quote?.change || 0).toFixed(2)}%
+                  </strong>
+                </div>
+              ))
+            ) : (
+              <div className="empty-table">
+                Add holdings to populate market momentum.
+              </div>
+            )}
+          </div>
+          <NavLink className="text-link market-card-link" to="/history">
+            Review historical movement <ArrowRight size={13} />
+          </NavLink>
+        </Panel>
+        <Panel
+          className="market-summary-card"
+          title="Reserve stability"
+          sub="Assets designed to preserve liquidity"
+        >
+          <div className="market-stability">
+            <div className="stability-ring">
+              <span>
+                {total ? ((stable / total) * 100).toFixed(0) : "0"}
+                <small>%</small>
+              </span>
+            </div>
+            <div>
+              <b>{money(stable)}</b>
+              <small>Stablecoin value</small>
+              <span
+                className={
+                  stable / Math.max(total, 1) >= 0.4 ? "green" : "amber"
+                }
+              >
+                {stable / Math.max(total, 1) >= 0.4
+                  ? "Target met"
+                  : "Below 40% target"}
+              </span>
+            </div>
+          </div>
+          <div className="progress-track">
+            <i
+              style={{
+                width: `${Math.min(total ? (stable / total) * 100 : 0, 100)}%`,
+              }}
+            />
+          </div>
+          <NavLink className="text-link market-card-link" to="/reserve-plan">
+            Open reserve plan <ArrowRight size={13} />
+          </NavLink>
+        </Panel>
+      </div>
+      <div className="market-filter-bar">
+        <div className="tabs market-tabs">
+          {["All assets", "Gainers", "Stablecoins"].map((item) => (
+            <button
+              key={item}
+              className={view === item ? "tab-active" : ""}
+              onClick={() => setView(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <label className="market-search">
+          <Search size={15} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search tracked assets"
+          />
+        </label>
+        <span className="market-feed-status">
+          <i className="pulse" /> CMC LIVE FEED
+        </span>
+      </div>
+      <Panel
+        className="market-table-panel"
+        title="Tracked market assets"
+        sub={`${filteredRows.length} assets in this treasury scope`}
+      >
+        <div className="table-scroll">
+          <table className="market-table">
+            <thead>
+              <tr>
+                <th>ASSET</th>
+                <th className="right">PRICE</th>
+                <th className="right">24H</th>
+                <th className="right">VALUE</th>
+                <th className="right">ALLOCATION</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => {
+                const allocation = total ? (row.value / total) * 100 : 0;
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div className="asset-cell">
+                        <span className="coin cyan">{row.symbol[0]}</span>
+                        <div>
+                          <b>{row.quote?.name || row.name}</b>
+                          <small>
+                            {row.symbol}
+                            {["USDC", "USDT", "DAI"].includes(row.symbol)
+                              ? " · Stablecoin"
+                              : ""}
+                          </small>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="mono right">
+                      {money(row.quote?.price || 0)}
+                    </td>
+                    <td
+                      className={`mono right ${(row.quote?.change || 0) >= 0 ? "green" : "red"}`}
+                    >
+                      {(row.quote?.change || 0) >= 0 ? "+" : ""}
+                      {(row.quote?.change || 0).toFixed(2)}%
+                    </td>
+                    <td className="mono right">{money(row.value)}</td>
+                    <td className="right">
+                      <div className="allocation">
+                        <span>
+                          <i
+                            style={{ width: `${Math.min(allocation, 100)}%` }}
+                          />
+                        </span>
+                        <small>{allocation.toFixed(1)}%</small>
+                      </div>
+                    </td>
+                    <td className="right">
+                      <Button onClick={() => navigate("/stress-test")}>
+                        <Zap size={13} /> Simulate
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!filteredRows.length && (
+            <div className="empty-table">
+              No quoted assets match this view. Refresh prices or add a holding.
+            </div>
+          )}
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function LiveMarket(){return <MarketPage/>}
-function EnhancedReserve(){const {rows,total,stable,runway,monthlyBurn}=usePortfolio();const {snapshot}=useStore();const navigate=useNavigate();const [saved,setSaved]=useState(false);const [executed,setExecuted]=useState(false);const [proof,setProof]=useState(false);const [vault,setVault]=useState(false);const target=monthlyBurn*3;const gap=Math.max(target-stable,0);const volatileRows=rows.filter(row=>!['USDC','USDT','DAI'].includes(row.symbol)).sort((a,b)=>b.value-a.value);const volatileValue=volatileRows.reduce((sum,row)=>sum+row.value,0);const proposed=gap;const projectedStable=stable+proposed;const projectedRunway=monthlyBurn?Math.max(total,projectedStable)/monthlyBurn:0;const plan={createdAt:new Date().toISOString(),target,stable,gap,proposed,monthlyBurn,runway,holdings:rows.map(row=>({symbol:row.symbol,value:row.value}))};const saveDraft=()=>{localStorage.setItem('reservepilot-reserve-plan',JSON.stringify(plan));setSaved(true)};const execute=()=>{download('reservepilot-multisig-batch.json',{...plan,action:'proposed stable reserve rebalance',status:'ready for signer review'});setExecuted(true)};const exportMemo=()=>download('reservepilot-reserve-memo.json',{...plan,projectedStable,projectedRunway,steps:['Governance approval','Stable reserve tranche','Confirm settlement']});return <><PageHead eyebrow="FIDUCIARY CAPITAL ALLOCATION / RUNWAY ENGINE" title="Reserve plan & rebalancing roadmap" desc="Preserve operational solvency by transitioning volatile exposure into liquidity reserves."><Badge tone={gap?'amber':'green'}>{gap?'PLAN IN PROGRESS':'TARGET MET'}</Badge><Button onClick={()=>navigate('/stress-test')}><Zap size={15}/> Simulate strategy</Button><Button onClick={exportMemo}><Download size={15}/> Export memo</Button><Button kind="primary" onClick={execute}><Shield size={15}/> {executed?'Batch exported':'Create multi-sig batch'}</Button></PageHead><LiveStatus/><div className="reserve-summary-grid"><Panel className="reserve-summary-card" title="Target protected reserve" sub="3 months of operating expenses"><strong>{money(target)} <small>USDC</small></strong><span className="green"><CheckCircle2 size={13}/> Covers {monthlyBurn? (target/monthlyBurn).toFixed(2):'0.00'} months at {money(monthlyBurn)}/mo</span><div className="reserve-progress"><i style={{width:'100%'}}/></div></Panel><Panel className="reserve-summary-card" title="Current liquid reserve" sub="Stablecoin holdings"><strong>{money(stable)} <small>USDC</small></strong><span>{monthlyBurn?(stable/monthlyBurn).toFixed(2):'0.00'} months cash runway · {total?(stable/total*100).toFixed(1):'0.0'}% of treasury</span><div className="reserve-progress"><i className="secondary" style={{width:`${Math.min(stable/Math.max(target,1)*100,100)}%`}}/></div></Panel><Panel className="reserve-summary-card" title="Reserve gap" sub="Required to immunize runway"><strong className={gap?'red':'green'}>{gap?money(gap):'$0'}</strong><span className={gap?'red':'green'}>{gap?'Required to reach target':'Target fully funded'}</span><div className="reserve-progress"><i className={gap?'danger':'safe'} style={{width:`${Math.min(stable/Math.max(target,1)*100,100)}%`}}/></div></Panel><Panel className="reserve-summary-card" title="Post-rebalance runway" sub="Projected after proposed tranche"><strong className="green">{projectedRunway.toFixed(2)} <small>months</small></strong><span className="green"><Shield size={13}/> Protected target coverage</span><div className="reserve-progress"><i className="safe" style={{width:`${Math.min(projectedRunway/Math.max(6,monthlyBurn?target/monthlyBurn:3)*100,100)}%`}}/></div></Panel></div><Panel className="reserve-directive"><div><Badge tone="cyan">MANDATE DIRECTIVE #04</Badge><h2>Rebalance {money(proposed)} from volatile holdings into stable reserves</h2><p>Your treasury currently holds {money(volatileValue)} in volatile assets. The proposed tranche raises protected reserves to {money(projectedStable)} and is a planning recommendation, not a transaction.</p><small><CircleHelp size={13}/> Review with your signers before execution.</small></div><div className="reserve-directive-actions"><Button kind="primary" onClick={execute}><Zap size={15}/> Execute full tranche</Button><Button onClick={()=>setProof(value=>!value)}><CheckCircle2 size={15}/> {proof?'Hide solvency proof':'View solvency proof'}</Button></div></Panel>{proof&&<Panel title="Solvency proof" sub="Deterministic reserve calculation"><div className="proof-grid"><span>Target reserve<b>{money(target)}</b></span><span>Current stable<b>{money(stable)}</b></span><span>Proposed tranche<b>{money(proposed)}</b></span><span>Remaining gap<b className={gap?'red':'green'}>{money(Math.max(target-projectedStable,0))}</b></span></div></Panel>}<div className="reserve-analysis-grid"><Panel title="Reserve funding spectrum" sub="Baseline capital immunization meter"><div className="funding-label"><span>Current stable reserve</span><b className="red">Unfunded gap {money(gap)}</b></div><div className="funding-bar"><i style={{width:`${Math.min(stable/Math.max(target,1)*100,100)}%`}}/><em style={{width:`${Math.min(gap/Math.max(target,1)*100,100)}%`}}/></div><div className="funding-scale"><span>$0</span><span>Target: {money(target)} USDC</span></div><div className="post-buffer"><span>Post-rebalance projected buffer</span><b className="green">{money(projectedStable)} protected</b></div><div className="allocation-mini">{volatileRows.slice(0,3).map(row=><div key={row.id}><span>{row.symbol}</span><b>{money(Math.max(row.value-(proposed/Math.max(volatileRows.length,1)),0))}</b></div>)}<div><span>Stable reserve</span><b className="green">{money(projectedStable)}</b></div></div></Panel><Panel title="Downside sensitivity & risk contribution" sub="Impact under a sudden -25% contraction"><div className="table-scroll"><table className="reserve-risk-table"><thead><tr><th>ASSET</th><th className="right">VALUE</th><th className="right">BETA</th><th className="right">-25% IMPACT</th><th className="right">PROPOSED</th></tr></thead><tbody>{rows.slice().sort((a,b)=>b.value-a.value).map(row=>{const stableAsset=['USDC','USDT','DAI'].includes(row.symbol);const impact=stableAsset?0:row.value*.25;const rebalance=stableAsset?proposed:Math.min(row.value,proposed/Math.max(volatileRows.length,1));return <tr key={row.id}><td><b>{row.symbol}</b><small>{row.name}</small></td><td className="right mono">{money(row.value)}</td><td className="right mono">{stableAsset?'0.00x':'1.00x'}</td><td className={`right mono ${impact?'red':'green'}`}>{impact?`-${money(impact)}`:'$0.00'}</td><td className={`right mono ${stableAsset?'green':'cyan'}`}>{stableAsset?`+${money(rebalance)}`:`-${money(rebalance)}`}</td></tr>})}</tbody></table></div><div className="preserved-capital"><span>Preserved upside capital post-execution</span><b>{money(Math.max(total-proposed,0))}</b></div></Panel></div><Panel title="Phased execution roadmap" sub="Step-by-step treasury implementation protocol"><div className="reserve-roadmap"><div className="reserve-step done"><span>01</span><div><b>Governance resolution</b><p>Approve the minimum reserve policy and signer scope.</p></div><Badge>READY</Badge></div><div className="reserve-step active"><span>02</span><div><b>Stable reserve tranche</b><p>Prepare {money(proposed)} for a reviewed multi-sig batch.</p></div><Badge tone="cyan">{executed?'EXPORTED':'PENDING'}</Badge></div><div className="reserve-step"><span>03</span><div><b>Confirm settlement</b><p>Reconcile received stablecoins and create an evidence snapshot.</p></div><Badge tone="amber">LOCKED</Badge></div><div className="reserve-step"><span>04</span><div><b>Vault optimization</b><p>Optionally evaluate low-risk stable yield only after the reserve is funded.</p></div><Button onClick={()=>setVault(value=>!value)}>{vault?'Configured':'Configure vault'}</Button></div></div></Panel><div className="reserve-footer-actions"><Button onClick={()=>{saveDraft();void snapshot()}}>{saved?'Draft saved':'Save draft plan'}</Button><span>{saved?'Saved to this browser workspace':'Ready to save a deterministic draft'}</span><Button kind="primary" onClick={execute}><Shield size={15}/> Push Safe batch draft</Button></div></>}
+function LiveMarket() {
+  return <MarketPage />;
+}
+function EnhancedReserve() {
+  const { rows, total, stable, runway, monthlyBurn } = usePortfolio();
+  const { settings, snapshot } = useStore();
+  const navigate = useNavigate();
+  const [saved, setSaved] = useState(false);
+  const [executed, setExecuted] = useState(false);
+  const [proof, setProof] = useState(false);
+  const [vault, setVault] = useState(false);
+  const target = monthlyBurn * settings.reserveTargetMonths;
+  const gap = Math.max(target - stable, 0);
+  const volatileRows = rows
+    .filter((row) => !["USDC", "USDT", "DAI"].includes(row.symbol))
+    .sort((a, b) => b.value - a.value);
+  const volatileValue = volatileRows.reduce((sum, row) => sum + row.value, 0);
+  const proposed = gap;
+  const projectedStable = stable + proposed;
+  const projectedRunway = monthlyBurn
+    ? Math.max(total, projectedStable) / monthlyBurn
+    : 0;
+  const plan = {
+    createdAt: new Date().toISOString(),
+    target,
+    stable,
+    gap,
+    proposed,
+    monthlyBurn,
+    runway,
+    holdings: rows.map((row) => ({ symbol: row.symbol, value: row.value })),
+  };
+  const saveDraft = () => {
+    localStorage.setItem("reservepilot-reserve-plan", JSON.stringify(plan));
+    setSaved(true);
+  };
+  const execute = () => {
+    download("reservepilot-multisig-batch.json", {
+      ...plan,
+      action: "proposed stable reserve rebalance",
+      status: "ready for signer review",
+    });
+    setExecuted(true);
+  };
+  const exportMemo = () =>
+    download("reservepilot-reserve-memo.json", {
+      ...plan,
+      projectedStable,
+      projectedRunway,
+      steps: [
+        "Governance approval",
+        "Stable reserve tranche",
+        "Confirm settlement",
+      ],
+    });
+  return (
+    <>
+      <PageHead
+        eyebrow="FIDUCIARY CAPITAL ALLOCATION / RUNWAY ENGINE"
+        title="Reserve plan & rebalancing roadmap"
+        desc="Preserve operational solvency by transitioning volatile exposure into liquidity reserves."
+      >
+        <Badge tone={gap ? "amber" : "green"}>
+          {gap ? "PLAN IN PROGRESS" : "TARGET MET"}
+        </Badge>
+        <Button onClick={() => navigate("/stress-test")}>
+          <Zap size={15} /> Simulate strategy
+        </Button>
+        <Button onClick={exportMemo}>
+          <Download size={15} /> Export memo
+        </Button>
+        <Button kind="primary" onClick={execute}>
+          <Shield size={15} />{" "}
+          {executed ? "Batch exported" : "Create multi-sig batch"}
+        </Button>
+      </PageHead>
+      <LiveStatus />
+      <div className="reserve-summary-grid">
+        <Panel
+          className="reserve-summary-card"
+          title="Target protected reserve"
+          sub={`${settings.reserveTargetMonths.toFixed(2)} months of operating expenses`}
+        >
+          <strong>
+            {money(target)} <small>USDC</small>
+          </strong>
+          <span className="green">
+            <CheckCircle2 size={13} /> Covers{" "}
+            {monthlyBurn ? (target / monthlyBurn).toFixed(2) : "0.00"} months at{" "}
+            {money(monthlyBurn)}/mo
+          </span>
+          <div className="reserve-progress">
+            <i style={{ width: "100%" }} />
+          </div>
+        </Panel>
+        <Panel
+          className="reserve-summary-card"
+          title="Current liquid reserve"
+          sub="Stablecoin holdings"
+        >
+          <strong>
+            {money(stable)} <small>USDC</small>
+          </strong>
+          <span>
+            {monthlyBurn ? (stable / monthlyBurn).toFixed(2) : "0.00"} months
+            cash runway · {total ? ((stable / total) * 100).toFixed(1) : "0.0"}%
+            of treasury
+          </span>
+          <div className="reserve-progress">
+            <i
+              className="secondary"
+              style={{
+                width: `${Math.min((stable / Math.max(target, 1)) * 100, 100)}%`,
+              }}
+            />
+          </div>
+        </Panel>
+        <Panel
+          className="reserve-summary-card"
+          title="Reserve gap"
+          sub="Required to immunize runway"
+        >
+          <strong className={gap ? "red" : "green"}>
+            {gap ? money(gap) : "$0"}
+          </strong>
+          <span className={gap ? "red" : "green"}>
+            {gap ? "Required to reach target" : "Target fully funded"}
+          </span>
+          <div className="reserve-progress">
+            <i
+              className={gap ? "danger" : "safe"}
+              style={{
+                width: `${Math.min((stable / Math.max(target, 1)) * 100, 100)}%`,
+              }}
+            />
+          </div>
+        </Panel>
+        <Panel
+          className="reserve-summary-card"
+          title="Post-rebalance runway"
+          sub="Projected after proposed tranche"
+        >
+          <strong className="green">
+            {projectedRunway.toFixed(2)} <small>months</small>
+          </strong>
+          <span className="green">
+            <Shield size={13} /> Protected target coverage
+          </span>
+          <div className="reserve-progress">
+            <i
+              className="safe"
+              style={{
+                width: `${Math.min((projectedRunway / Math.max(6, monthlyBurn ? target / monthlyBurn : 3)) * 100, 100)}%`,
+              }}
+            />
+          </div>
+        </Panel>
+      </div>
+      <Panel className="reserve-directive">
+        <div>
+          <Badge tone="cyan">MANDATE DIRECTIVE #04</Badge>
+          <h2>
+            Rebalance {money(proposed)} from volatile holdings into stable
+            reserves
+          </h2>
+          <p>
+            Your treasury currently holds {money(volatileValue)} in volatile
+            assets. The proposed tranche raises protected reserves to{" "}
+            {money(projectedStable)} and is a planning recommendation, not a
+            transaction.
+          </p>
+          <small>
+            <CircleHelp size={13} /> Review with your signers before execution.
+          </small>
+        </div>
+        <div className="reserve-directive-actions">
+          <Button kind="primary" onClick={execute}>
+            <Zap size={15} /> Execute full tranche
+          </Button>
+          <Button onClick={() => setProof((value) => !value)}>
+            <CheckCircle2 size={15} />{" "}
+            {proof ? "Hide solvency proof" : "View solvency proof"}
+          </Button>
+        </div>
+      </Panel>
+      {proof && (
+        <Panel title="Solvency proof" sub="Deterministic reserve calculation">
+          <div className="proof-grid">
+            <span>
+              Target reserve<b>{money(target)}</b>
+            </span>
+            <span>
+              Current stable<b>{money(stable)}</b>
+            </span>
+            <span>
+              Proposed tranche<b>{money(proposed)}</b>
+            </span>
+            <span>
+              Remaining gap
+              <b className={gap ? "red" : "green"}>
+                {money(Math.max(target - projectedStable, 0))}
+              </b>
+            </span>
+          </div>
+        </Panel>
+      )}
+      <div className="reserve-analysis-grid">
+        <Panel
+          title="Reserve funding spectrum"
+          sub="Baseline capital immunization meter"
+        >
+          <div className="funding-label">
+            <span>Current stable reserve</span>
+            <b className="red">Unfunded gap {money(gap)}</b>
+          </div>
+          <div className="funding-bar">
+            <i
+              style={{
+                width: `${Math.min((stable / Math.max(target, 1)) * 100, 100)}%`,
+              }}
+            />
+            <em
+              style={{
+                width: `${Math.min((gap / Math.max(target, 1)) * 100, 100)}%`,
+              }}
+            />
+          </div>
+          <div className="funding-scale">
+            <span>$0</span>
+            <span>Target: {money(target)} USDC</span>
+          </div>
+          <div className="post-buffer">
+            <span>Post-rebalance projected buffer</span>
+            <b className="green">{money(projectedStable)} protected</b>
+          </div>
+          <div className="allocation-mini">
+            {volatileRows.slice(0, 3).map((row) => (
+              <div key={row.id}>
+                <span>{row.symbol}</span>
+                <b>
+                  {money(
+                    Math.max(
+                      row.value - proposed / Math.max(volatileRows.length, 1),
+                      0,
+                    ),
+                  )}
+                </b>
+              </div>
+            ))}
+            <div>
+              <span>Stable reserve</span>
+              <b className="green">{money(projectedStable)}</b>
+            </div>
+          </div>
+        </Panel>
+        <Panel
+          title="Downside sensitivity & risk contribution"
+          sub="Impact under a sudden -25% contraction"
+        >
+          <div className="table-scroll">
+            <table className="reserve-risk-table">
+              <thead>
+                <tr>
+                  <th>ASSET</th>
+                  <th className="right">VALUE</th>
+                  <th className="right">BETA</th>
+                  <th className="right">-25% IMPACT</th>
+                  <th className="right">PROPOSED</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows
+                  .slice()
+                  .sort((a, b) => b.value - a.value)
+                  .map((row) => {
+                    const stableAsset = ["USDC", "USDT", "DAI"].includes(
+                      row.symbol,
+                    );
+                    const impact = stableAsset ? 0 : row.value * 0.25;
+                    const rebalance = stableAsset
+                      ? proposed
+                      : Math.min(
+                          row.value,
+                          proposed / Math.max(volatileRows.length, 1),
+                        );
+                    return (
+                      <tr key={row.id}>
+                        <td>
+                          <b>{row.symbol}</b>
+                          <small>{row.name}</small>
+                        </td>
+                        <td className="right mono">{money(row.value)}</td>
+                        <td className="right mono">
+                          {stableAsset ? "0.00x" : "1.00x"}
+                        </td>
+                        <td
+                          className={`right mono ${impact ? "red" : "green"}`}
+                        >
+                          {impact ? `-${money(impact)}` : "$0.00"}
+                        </td>
+                        <td
+                          className={`right mono ${stableAsset ? "green" : "cyan"}`}
+                        >
+                          {stableAsset
+                            ? `+${money(rebalance)}`
+                            : `-${money(rebalance)}`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+          <div className="preserved-capital">
+            <span>Preserved upside capital post-execution</span>
+            <b>{money(Math.max(total - proposed, 0))}</b>
+          </div>
+        </Panel>
+      </div>
+      <Panel
+        title="Phased execution roadmap"
+        sub="Step-by-step treasury implementation protocol"
+      >
+        <div className="reserve-roadmap">
+          <div className="reserve-step done">
+            <span>01</span>
+            <div>
+              <b>Governance resolution</b>
+              <p>Approve the minimum reserve policy and signer scope.</p>
+            </div>
+            <Badge>READY</Badge>
+          </div>
+          <div className="reserve-step active">
+            <span>02</span>
+            <div>
+              <b>Stable reserve tranche</b>
+              <p>Prepare {money(proposed)} for a reviewed multi-sig batch.</p>
+            </div>
+            <Badge tone="cyan">{executed ? "EXPORTED" : "PENDING"}</Badge>
+          </div>
+          <div className="reserve-step">
+            <span>03</span>
+            <div>
+              <b>Confirm settlement</b>
+              <p>
+                Reconcile received stablecoins and create an evidence snapshot.
+              </p>
+            </div>
+            <Badge tone="amber">LOCKED</Badge>
+          </div>
+          <div className="reserve-step">
+            <span>04</span>
+            <div>
+              <b>Vault optimization</b>
+              <p>
+                Optionally evaluate low-risk stable yield only after the reserve
+                is funded.
+              </p>
+            </div>
+            <Button onClick={() => setVault((value) => !value)}>
+              {vault ? "Configured" : "Configure vault"}
+            </Button>
+          </div>
+        </div>
+      </Panel>
+      <div className="reserve-footer-actions">
+        <Button
+          onClick={() => {
+            saveDraft();
+            void snapshot();
+          }}
+        >
+          {saved ? "Draft saved" : "Save draft plan"}
+        </Button>
+        <span>
+          {saved
+            ? "Saved to this browser workspace"
+            : "Ready to save a deterministic draft"}
+        </span>
+        <Button kind="primary" onClick={execute}>
+          <Shield size={15} /> Push Safe batch draft
+        </Button>
+      </div>
+    </>
+  );
+}
 
-function LiveReserve(){return <EnhancedReserve/>}
-function EnhancedStress(){const {rows,total,stable,runway,monthlyBurn}=usePortfolio();const {settings}=useStore();const navigate=useNavigate();const [shock,setShock]=useState(25);const [volatileOnly,setVolatileOnly]=useState(true);const [depeg,setDepeg]=useState(false);const [auditBurn,setAuditBurn]=useState(false);const volatile=rows.filter(row=>!['USDC','USDT','DAI'].includes(row.symbol)).reduce((sum,row)=>sum+row.value,0);const calculate=(percent:number)=>{const burn=monthlyBurn*(auditBurn?1.1:1);const stressedVolatile=volatile*(1-percent/100);const stressedStable=stable*(volatileOnly?(depeg?.98:1):(1-percent/100));const stressedTotal=stressedVolatile+stressedStable;const stressedRunway=burn?stressedTotal/burn:0;const gap=Math.max(burn*settings.reserveTargetMonths-stressedTotal,0);return {burn,stressedVolatile,stressedStable,stressedTotal,stressedRunway,gap}};const result=calculate(shock);const scenarios=[0,10,25,40,60].map(percent=>({percent,...calculate(percent)}));const status=result.gap>0?'Critical deficit':result.stressedRunway<settings.reserveTargetMonths+.8?'Watch margin':'Covered';const statusTone=result.gap>0?'red':status==='Watch margin'?'amber':'green';const insight=result.gap>0?`At a ${shock}% decline, the treasury falls below its reserve target by ${money(result.gap)}. Increase protected reserves before relying on this scenario.`:`At a ${shock}% decline, runway falls from ${runway.toFixed(2)} to ${result.stressedRunway.toFixed(2)} months. The remaining buffer is ${(result.stressedRunway-settings.reserveTargetMonths).toFixed(2)} months.`;const applyPreset=(percent:number)=>setShock(percent);return <><PageHead eyebrow="RISK ENGINE / DOWNSIDE MODEL" title="Stress test your treasury" desc="Simulate volatile asset downturns to protect operational runway and payroll commitments."><Badge tone="cyan">LIVE MODEL</Badge><Button onClick={()=>{setShock(25);setVolatileOnly(true);setDepeg(false);setAuditBurn(false)}}><RefreshCw size={15}/> Reset</Button><Button kind="primary" onClick={()=>navigate('/reserve-plan')}><Shield size={15}/> Build reserve plan</Button></PageHead><div className="stress-telemetry"><span><b>Target runway</b>{settings.reserveTargetMonths.toFixed(2)} months</span><span><b>Monthly net burn</b>{money(monthlyBurn)} / mo</span><span><b>Stable reserves</b>{money(stable)}</span></div><div className="stress-notice"><CircleHelp size={18}/><p><b>Planning model, not a prediction.</b> Haircuts are applied to your current quoted holdings and preserve stablecoins when volatile-only mode is enabled.</p><Badge tone="cyan">DETERMINISTIC MODE</Badge></div><Panel className="stress-console" title="Macro stress scenarios" sub="Choose a preset or fine-tune the downside haircut."><div className="stress-presets">{[['Baseline',0],['Dip',10],['Recommended',25],['Bear drawdown',40],['Black swan',60]].map(([label,percent])=><button key={label as string} className={shock===percent?'stress-preset active':''} onClick={()=>applyPreset(Number(percent))}><span>{label}</span><b>{Number(percent)}% cut</b></button>)}</div><div className="stress-slider-head"><span>Haircut severity</span><strong>{shock}% <small>volatile decline</small></strong></div><input className="range stress-range" type="range" min="0" max="80" value={shock} onChange={event=>setShock(Number(event.target.value))}/><div className="range-labels"><span>0% baseline</span><span>25% recommended</span><span>60% black swan</span><span>80% liquidation run</span></div><div className="stress-options"><label className="toggle-line"><span>Apply decline only to volatile assets</span><input type="checkbox" checked={volatileOnly} onChange={event=>setVolatileOnly(event.target.checked)}/><i/></label><label className="toggle-line"><span>Include stablecoin peg haircut (2%)</span><input type="checkbox" checked={depeg} onChange={event=>setDepeg(event.target.checked)}/><i/></label><label className="toggle-line"><span>Assume +10% emergency burn shock</span><input type="checkbox" checked={auditBurn} onChange={event=>setAuditBurn(event.target.checked)}/><i/></label></div></Panel><div className="stress-result-grid"><Panel title="Stressed value" sub="Estimated treasury after haircut"><strong className="stress-result-number">{money(result.stressedTotal)}</strong><span className="red">-{money(Math.max(total-result.stressedTotal,0))} ({total?((result.stressedTotal-total)/total*100).toFixed(1):'0.0'}%)</span><small>Baseline value: {money(total)}</small></Panel><Panel title="Stressed runway" sub="Operating coverage after haircut"><strong className="stress-result-number">{result.stressedRunway.toFixed(2)} <small>months</small></strong><span className={result.stressedRunway>=settings.reserveTargetMonths?'green':'red'}>{(result.stressedRunway-runway).toFixed(2)} months vs baseline</span><small>Target: {settings.reserveTargetMonths.toFixed(2)} months</small></Panel><Panel title="Reserve gap" sub="Capital needed to hit target"><strong className={`stress-result-number ${result.gap?'red':'green'}`}>{result.gap?money(result.gap):'$0 gap'}</strong><span className={result.gap?'red':'green'}>{result.gap?'Target breach':'Funded for target'}</span><small>Stable protected: {money(result.stressedStable)}</small></Panel><Panel title="Stress status" sub="Risk classification"><Badge tone={statusTone}>{status.toUpperCase()}</Badge><p className="stress-status-copy">{result.gap?'Emergency reserve action is required.':`Runway remains ${(result.stressedRunway-settings.reserveTargetMonths).toFixed(2)} months above the minimum.`}</p><small>Threshold: {money(result.burn*settings.reserveTargetMonths)}</small></Panel></div><div className="stress-analysis-grid"><Panel title="Stress testing sensitivity matrix" sub="Deterministic haircuts across the current portfolio."><div className="table-scroll"><table className="stress-matrix"><thead><tr><th>SCENARIO</th><th>VOLATILE ASSETS</th><th>STRESSED TOTAL</th><th>RUNWAY</th><th>STATUS</th></tr></thead><tbody>{scenarios.map(item=><tr className={item.percent===shock?'selected':''} key={item.percent}><td>{item.percent===0?'Current market':item.percent===25?'Standard correction':item.percent===60?'Black swan':`${item.percent}% drawdown`}</td><td className="mono">{money(item.stressedVolatile)}</td><td className="mono">{money(item.stressedTotal)}</td><td className="mono">{item.stressedRunway.toFixed(2)} mo</td><td><Badge tone={item.gap?'red':item.stressedRunway<settings.reserveTargetMonths+.8?'amber':'green'}>{item.gap?'DEFICIT':item.stressedRunway<settings.reserveTargetMonths+.8?'WATCH':'COVERED'}</Badge></td></tr>)}</tbody></table></div></Panel><Panel title="Runway depletion curves" sub={`Target line: ${settings.reserveTargetMonths.toFixed(2)} months`}><div className="stress-bars">{scenarios.map(item=><div className="stress-bar-row" key={item.percent}><div><span>{item.percent===0?'Baseline':`-${item.percent}%`}</span><b>{item.stressedRunway.toFixed(2)} mo</b></div><div className="stress-bar-track"><i className={item.gap?'danger':''} style={{width:`${Math.min(item.stressedRunway/6*100,100)}%`}}/><em style={{left:`${Math.min(settings.reserveTargetMonths/6*100,100)}%`}}/></div></div>)}</div></Panel></div><div className="stress-directive"><div><Badge tone={statusTone}>RISK ANALYSIS DIRECTIVE</Badge><p>{insight}</p></div><Button onClick={()=>download('reservepilot-stress-scenario.json',{shock,volatileOnly,depeg,auditBurn,total,stable,result,scenarios})}><Download size={15}/> Export scenario report</Button><Button onClick={()=>navigate('/reserve-plan')}><Sparkles size={15}/> Auto-rebalance proposal</Button></div><div className="stress-actions"><Button onClick={()=>download('reservepilot-stress-benchmark.json',{createdAt:new Date().toISOString(),shock,result})}><FileClock size={15}/> Save benchmark</Button><Button kind="primary" onClick={()=>navigate('/reserve-plan')}><Shield size={15}/> Build reserve plan</Button></div></>}
+function LiveReserve() {
+  return <EnhancedReserve />;
+}
+function EnhancedStress() {
+  const { rows, total, stable, runway, monthlyBurn } = usePortfolio();
+  const { settings } = useStore();
+  const navigate = useNavigate();
+  const [shock, setShock] = useState(25);
+  const [volatileOnly, setVolatileOnly] = useState(true);
+  const [depeg, setDepeg] = useState(false);
+  const [auditBurn, setAuditBurn] = useState(false);
+  const quotedAssets = rows.filter((row) => row.quote).length;
+  const dataReady = rows.length > 0 && quotedAssets === rows.length;
+  const volatile = rows
+    .filter((row) => !["USDC", "USDT", "DAI"].includes(row.symbol))
+    .reduce((sum, row) => sum + row.value, 0);
+  const calculate = (percent: number) => {
+    const burn = monthlyBurn * (auditBurn ? 1.1 : 1);
+    const stressedVolatile = volatile * (1 - percent / 100);
+    const stressedStable =
+      stable * (volatileOnly ? (depeg ? 0.98 : 1) : 1 - percent / 100);
+    const stressedTotal = stressedVolatile + stressedStable;
+    const stressedRunway = burn ? stressedTotal / burn : 0;
+    const gap = Math.max(
+      burn * settings.reserveTargetMonths - stressedTotal,
+      0,
+    );
+    return {
+      burn,
+      stressedVolatile,
+      stressedStable,
+      stressedTotal,
+      stressedRunway,
+      gap,
+    };
+  };
+  const result = calculate(shock);
+  const scenarios = [0, 10, 25, 40, 60].map((percent) => ({
+    percent,
+    ...calculate(percent),
+  }));
+  const depletionCurve = scenarios.map((item) => ({
+    haircut: `${item.percent}%`,
+    runway: Number(item.stressedRunway.toFixed(2)),
+    target: settings.reserveTargetMonths,
+  }));
+  const status =
+    result.gap > 0
+      ? "Critical deficit"
+      : result.stressedRunway < settings.reserveTargetMonths + 0.8
+        ? "Watch margin"
+        : "Covered";
+  const statusTone =
+    result.gap > 0 ? "red" : status === "Watch margin" ? "amber" : "green";
+  const insight =
+    result.gap > 0
+      ? `At a ${shock}% decline, the treasury falls below its reserve target by ${money(result.gap)}. Increase protected reserves before relying on this scenario.`
+      : `At a ${shock}% decline, runway falls from ${runway.toFixed(2)} to ${result.stressedRunway.toFixed(2)} months. The remaining buffer is ${(result.stressedRunway - settings.reserveTargetMonths).toFixed(2)} months.`;
+  const applyPreset = (percent: number) => setShock(percent);
+  return (
+    <>
+      <PageHead
+        eyebrow="RISK ENGINE / DOWNSIDE MODEL"
+        title="Stress test your treasury"
+        desc="Simulate volatile asset downturns to protect operational runway and payroll commitments."
+      >
+        <Badge tone="cyan">LIVE MODEL</Badge>
+        <Button
+          onClick={() => {
+            setShock(25);
+            setVolatileOnly(true);
+            setDepeg(false);
+            setAuditBurn(false);
+          }}
+        >
+          <RefreshCw size={15} /> Reset
+        </Button>
+        <Button kind="primary" onClick={() => navigate("/reserve-plan")}>
+          <Shield size={15} /> Build reserve plan
+        </Button>
+      </PageHead>
+      <div className="stress-telemetry">
+        <span>
+          <b>Target runway</b>
+          {settings.reserveTargetMonths.toFixed(2)} months
+        </span>
+        <span>
+          <b>Monthly net burn</b>
+          {money(monthlyBurn)} / mo
+        </span>
+        <span>
+          <b>Stable reserves</b>
+          {money(stable)}
+        </span>
+      </div>
+      <div className="stress-notice">
+        <CircleHelp size={18} />
+        <p>
+          <b>Planning model, not a prediction.</b> Haircuts are applied to your
+          current quoted holdings and preserve stablecoins when volatile-only
+          mode is enabled.
+        </p>
+        <Badge tone={dataReady ? "cyan" : "amber"}>
+          {dataReady
+            ? `LIVE DATA · ${quotedAssets} ASSETS`
+            : `WAITING FOR QUOTES · ${quotedAssets}/${rows.length}`}
+        </Badge>
+      </div>
+      <Panel
+        className="stress-console"
+        title="Macro stress scenarios"
+        sub="Choose a preset or fine-tune the downside haircut."
+      >
+        <div className="stress-presets">
+          {[
+            ["Baseline", 0],
+            ["Dip", 10],
+            ["Recommended", 25],
+            ["Bear drawdown", 40],
+            ["Black swan", 60],
+          ].map(([label, percent]) => (
+            <button
+              key={label as string}
+              className={shock === percent ? "stress-preset active" : ""}
+              onClick={() => applyPreset(Number(percent))}
+            >
+              <span>{label}</span>
+              <b>{Number(percent)}% cut</b>
+            </button>
+          ))}
+        </div>
+        <div className="stress-slider-head">
+          <span>Haircut severity</span>
+          <strong>
+            {shock}% <small>volatile decline</small>
+          </strong>
+        </div>
+        <input
+          className="range stress-range"
+          type="range"
+          min="0"
+          max="80"
+          value={shock}
+          onChange={(event) => setShock(Number(event.target.value))}
+        />
+        <div className="range-labels">
+          <span>0% baseline</span>
+          <span>25% recommended</span>
+          <span>60% black swan</span>
+          <span>80% liquidation run</span>
+        </div>
+        <div className="stress-options">
+          <label className="toggle-line">
+            <span>Apply decline only to volatile assets</span>
+            <input
+              type="checkbox"
+              checked={volatileOnly}
+              onChange={(event) => setVolatileOnly(event.target.checked)}
+            />
+            <i />
+          </label>
+          <label className="toggle-line">
+            <span>Include stablecoin peg haircut (2%)</span>
+            <input
+              type="checkbox"
+              checked={depeg}
+              onChange={(event) => setDepeg(event.target.checked)}
+            />
+            <i />
+          </label>
+          <label className="toggle-line">
+            <span>Assume +10% emergency burn shock</span>
+            <input
+              type="checkbox"
+              checked={auditBurn}
+              onChange={(event) => setAuditBurn(event.target.checked)}
+            />
+            <i />
+          </label>
+        </div>
+      </Panel>
+      <div className="stress-result-grid">
+        <Panel title="Stressed value" sub="Estimated treasury after haircut">
+          <strong className="stress-result-number">
+            {money(result.stressedTotal)}
+          </strong>
+          <span className="red">
+            -{money(Math.max(total - result.stressedTotal, 0))} (
+            {total
+              ? (((result.stressedTotal - total) / total) * 100).toFixed(1)
+              : "0.0"}
+            %)
+          </span>
+          <small>Baseline value: {money(total)}</small>
+        </Panel>
+        <Panel title="Stressed runway" sub="Operating coverage after haircut">
+          <strong className="stress-result-number">
+            {result.stressedRunway.toFixed(2)} <small>months</small>
+          </strong>
+          <span
+            className={
+              result.stressedRunway >= settings.reserveTargetMonths
+                ? "green"
+                : "red"
+            }
+          >
+            {(result.stressedRunway - runway).toFixed(2)} months vs baseline
+          </span>
+          <small>
+            Target: {settings.reserveTargetMonths.toFixed(2)} months
+          </small>
+        </Panel>
+        <Panel title="Reserve gap" sub="Capital needed to hit target">
+          <strong
+            className={`stress-result-number ${result.gap ? "red" : "green"}`}
+          >
+            {result.gap ? money(result.gap) : "$0 gap"}
+          </strong>
+          <span className={result.gap ? "red" : "green"}>
+            {result.gap ? "Target breach" : "Funded for target"}
+          </span>
+          <small>Stable protected: {money(result.stressedStable)}</small>
+        </Panel>
+        <Panel title="Stress status" sub="Risk classification">
+          <Badge tone={statusTone}>{status.toUpperCase()}</Badge>
+          <p className="stress-status-copy">
+            {result.gap
+              ? "Emergency reserve action is required."
+              : `Runway remains ${(result.stressedRunway - settings.reserveTargetMonths).toFixed(2)} months above the minimum.`}
+          </p>
+          <small>
+            Threshold: {money(result.burn * settings.reserveTargetMonths)}
+          </small>
+        </Panel>
+      </div>
+      <div className="stress-analysis-grid">
+        <Panel
+          title="Stress testing sensitivity matrix"
+          sub="Deterministic haircuts across the current portfolio."
+        >
+          <div className="table-scroll">
+            <table className="stress-matrix">
+              <thead>
+                <tr>
+                  <th>SCENARIO</th>
+                  <th>VOLATILE ASSETS</th>
+                  <th>STRESSED TOTAL</th>
+                  <th>RUNWAY</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map((item) => (
+                  <tr
+                    className={item.percent === shock ? "selected" : ""}
+                    key={item.percent}
+                  >
+                    <td>
+                      {item.percent === 0
+                        ? "Current market"
+                        : item.percent === 25
+                          ? "Standard correction"
+                          : item.percent === 60
+                            ? "Black swan"
+                            : `${item.percent}% drawdown`}
+                    </td>
+                    <td className="mono">{money(item.stressedVolatile)}</td>
+                    <td className="mono">{money(item.stressedTotal)}</td>
+                    <td className="mono">
+                      {item.stressedRunway.toFixed(2)} mo
+                    </td>
+                    <td>
+                      <Badge
+                        tone={
+                          item.gap
+                            ? "red"
+                            : item.stressedRunway <
+                                settings.reserveTargetMonths + 0.8
+                              ? "amber"
+                              : "green"
+                        }
+                      >
+                        {item.gap
+                          ? "DEFICIT"
+                          : item.stressedRunway <
+                              settings.reserveTargetMonths + 0.8
+                            ? "WATCH"
+                            : "COVERED"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+        <Panel
+          title="Runway depletion curves"
+          sub={`Target line: ${settings.reserveTargetMonths.toFixed(2)} months`}
+        >
+          <div className="chart stress-curve-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <ReLineChart data={depletionCurve}>
+                <CartesianGrid stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="haircut" />
+                <YAxis domain={[0, "auto"]} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="runway"
+                  name="Runway (months)"
+                  stroke="#06b6d4"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="target"
+                  name="Target (months)"
+                  stroke="#f59e0b"
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+              </ReLineChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+      </div>
+      <div className="stress-directive">
+        <div>
+          <Badge tone={statusTone}>RISK ANALYSIS DIRECTIVE</Badge>
+          <p>{insight}</p>
+        </div>
+        <Button
+          onClick={() =>
+            download("reservepilot-stress-scenario.json", {
+              shock,
+              volatileOnly,
+              depeg,
+              auditBurn,
+              total,
+              stable,
+              result,
+              scenarios,
+            })
+          }
+        >
+          <Download size={15} /> Export scenario report
+        </Button>
+        <Button onClick={() => navigate("/reserve-plan")}>
+          <Sparkles size={15} /> Auto-rebalance proposal
+        </Button>
+      </div>
+      <div className="stress-actions">
+        <Button
+          onClick={() =>
+            download("reservepilot-stress-benchmark.json", {
+              createdAt: new Date().toISOString(),
+              shock,
+              result,
+            })
+          }
+        >
+          <FileClock size={15} /> Save benchmark
+        </Button>
+        <Button kind="primary" onClick={() => navigate("/reserve-plan")}>
+          <Shield size={15} /> Build reserve plan
+        </Button>
+      </div>
+    </>
+  );
+}
 
-function LiveStress(){return <EnhancedStress/>}
-function LiveHistory(){const {snapshots}=useStore();return <><PageHead title="Historical snapshots" desc="Review valuations saved from live quote refreshes."><Button onClick={()=>download('reservepilot-snapshots.json',snapshots)}><Download size={15}/> Export</Button></PageHead><Panel title="Snapshot history" sub={`${snapshots.length} saved snapshots`}><div className="table-scroll"><table><thead><tr><th>DATE</th><th>VALUE</th><th>RUNWAY</th><th>STABLE RESERVE</th></tr></thead><tbody>{snapshots.slice().reverse().map(item=><tr key={item.at}><td>{new Date(item.at).toLocaleString()}</td><td className="mono">{money(item.value)}</td><td className="mono">{item.runway.toFixed(2)} mo</td><td className="mono">{money(item.stable)}</td></tr>)}</tbody></table>{!snapshots.length&&<div className="empty-table">No snapshots saved yet. Refresh live data from the cockpit to create one.</div>}</div></Panel></>}
-function LiveEvidence(){const store=useStore();const {rows,total,stable,runway,monthlyBurn,targetReserve}=usePortfolio();const [payloadTab,setPayloadTab]=useState('Payload');const [verified,setVerified]=useState(false);const latest=store.snapshots[store.snapshots.length-1];const capturedAt=latest?.at||store.lastSync;const payload=JSON.stringify({status:{timestamp:capturedAt==='Never'?new Date().toISOString():capturedAt,error_code:store.error?1:0,credit_count:1},data:Object.fromEntries(rows.map(row=>[row.symbol,{price:row.quote?.price||0,quantity:row.amount,value:row.value}]))},null,2);const csv=['symbol,quantity,price,value,change,updated',...rows.map(row=>[row.symbol,row.amount,row.quote?.price||0,row.value,row.quote?.change||0,row.quote?.updated||''].join(','))].join('\n');const exportEvidence=()=>download('reservepilot-evidence.json',{generatedAt:new Date().toISOString(),workspace:store.settings,holdings:rows.map(row=>({symbol:row.symbol,quantity:row.amount,price:row.quote?.price||0,value:row.value})),snapshots:store.snapshots,oracle:{provider:'CoinMarketCap API v2',lastSync:store.lastSync}});const stableRatio=total?stable/total:0;const volatileValue=Math.max(total-stable,0);const stressedValue=volatileValue*.75+stable;return <div className="evidence-report"><div className="evidence-header"><div><div className="eyebrow">EVIDENCE &amp; AUDIT TRAIL / REPRODUCIBLE SOLVENCY PROOF</div><h1>Evidence Report &amp; Audit Trail</h1><p>Cryptographic-style proof of data provenance, live oracle timestamps, deterministic formulas, and fiduciary assumptions behind {store.settings.companyName} calculations.</p></div><div className="evidence-attestation"><span className="pulse"/> {store.error?'ORACLE REVIEW REQUIRED':'ORACLE ATTESTATION VALID'}</div></div><LiveStatus/><div className="evidence-toolbar"><div className="evidence-selects"><select className="select" defaultValue="latest"><option value="latest">Latest available snapshot</option>{store.snapshots.slice().reverse().map(snapshot=><option key={snapshot.at} value={snapshot.at}>{new Date(snapshot.at).toLocaleString()}</option>)}</select><select className="select" defaultValue="standard"><option value="standard">Active: -25% standard correction</option><option value="baseline">Active: baseline spot prices</option></select></div><div className="page-actions"><Button onClick={()=>setVerified(true)}><CheckCircle2 size={15}/> {verified?'Merkle proof verified':'Verify Merkle proof'}</Button><Button onClick={exportEvidence}><Download size={15}/> Download JSON</Button><Button onClick={()=>downloadFile('reservepilot-valuations.csv',csv,'text/csv')}><Download size={15}/> Export CSV</Button><Button kind="primary" onClick={()=>window.print()}><FileCheck2 size={15}/> Print audit report</Button></div></div><div className="evidence-metadata"><div className="evidence-card"><div className="evidence-card-title">SNAPSHOT HASH &amp; BLOCK <span>#</span></div><strong>0x{(capturedAt==='Never'?'reservepilot':capturedAt).replace(/[^a-z0-9]/gi,'').slice(-12).toLowerCase()}</strong><Badge tone={verified?'green':'cyan'}>{verified?'VERIFIED':'LOCAL ATTESTATION'}</Badge><small>{capturedAt==='Never'?'No snapshot captured yet':new Date(capturedAt).toLocaleString()}</small></div><div className="evidence-card"><div className="evidence-card-title">TREASURY SCOPE <Wallet size={15}/></div><strong>{store.settings.companyName}</strong><span>Authenticated workspace</span><small>Base currency: USD · Modified cash basis</small></div><div className="evidence-card"><div className="evidence-card-title">OPERATIONAL INPUTS <Coins size={15}/></div><strong>{money(monthlyBurn)} <small>/ mo</small></strong><span>Monthly audited net burn</span><small>Target cushion: {store.settings.reserveTargetMonths.toFixed(2)} months · Reserve: {money(targetReserve)}</small></div><div className="evidence-card"><div className="evidence-card-title">AUDIT &amp; REPRODUCIBILITY <CheckCircle2 size={15}/></div><strong className="green">{rows.length?'REPRODUCIBLE':'AWAITING DATA'}</strong><span>CoinMarketCap API v2</span><small>{store.snapshots.length} local snapshots · deterministic sum</small></div></div><section className="evidence-section"><div className="evidence-section-heading"><h2><span className="section-dot cyan-dot"/> CoinMarketCap Telemetry &amp; Ingestion Inspector</h2><Badge tone="cyan">LIVE SIGNED ORACLE INGESTION</Badge></div><div className="telemetry-grid"><div className="telemetry-panel"><div className="telemetry-title"><b>Oracle ingestion call log</b><Badge tone={store.error?'red':'green'}>{store.error?'ERROR':'HTTP 200 / READY'}</Badge></div>{[['Endpoint','/v2/cryptocurrency/quotes/latest'],['Parameters',rows.length?rows.map(row=>row.symbol).join(',')+'&convert=USD':'No holdings configured'],['Latency & ingestion node','Local proxy · CoinMarketCap v2'],['Last sync',store.lastSync==='Never'?'Not synced':new Date(store.lastSync).toLocaleString()],['Oracle signature scheme','Deployment secret · response verified']].map(([label,value])=><div className="telemetry-row" key={label}><span>{label}</span><b>{value}</b></div>)}<small>Purpose: real-time spot valuation and 24h market liquidity benchmarks · Credit cost: 1 unit</small></div><div className="payload-panel"><div className="payload-head"><span><i/> <i/> <i/> terminal.{payloadTab.toLowerCase()}.json</span><div>{['Payload','Headers','Sig'].map(tab=><button key={tab} className={payloadTab===tab?'active':''} onClick={()=>setPayloadTab(tab)}>{tab}</button>)}</div></div><pre>{payloadTab==='Payload'?payload:payloadTab==='Headers'?'HTTP/2 200 OK\ncontent-type: application/json\ncache-control: no-cache\ncmc-trace-id: reservepilot-local\nx-rate-limit: provider managed':'algorithm: HMAC-SHA256\nstatus: VALID_AND_ATTESTED\nsource: CoinMarketCap API v2\nmerkle_root: local snapshot hash'}</pre><div className="payload-foot"><span>RFC3339 timestamp: {capturedAt==='Never'?'pending':Math.floor(new Date(capturedAt).getTime()/1000)}</span><button onClick={()=>navigator.clipboard?.writeText(payload)}><Download size={12}/> Copy JSON</button></div></div></div></section><section className="evidence-section"><div className="evidence-section-heading"><h2><span className="section-dot blue-dot"/> Verified Market Prices &amp; Settlement Table</h2><span className="evidence-muted">{capturedAt==='Never'?'Awaiting first quote':'Audit window: '+new Date(capturedAt).toLocaleString()}</span></div><div className="evidence-table-wrap"><table className="evidence-table"><thead><tr><th>ASSET &amp; SOURCE</th><th className="right">AUDITED BALANCE</th><th className="right">CMC SETTLEMENT PRICE</th><th className="right">VALUATION (USD)</th><th>TIMESTAMP</th><th>ORACLE</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td><div className="evidence-asset"><span className="coin cyan">{row.symbol[0]}</span><div><b>{row.name} <small>{row.symbol}</small></b><span>CoinMarketCap quote</span></div></div></td><td className="right mono">{row.amount.toLocaleString()} {row.symbol}</td><td className="right mono">{row.quote?money(row.quote.price):'Not quoted'}</td><td className="right mono blue-text">{money(row.value)}</td><td>{row.quote?.updated?new Date(row.quote.updated).toLocaleTimeString():'Pending'}</td><td><Badge tone={row.quote?'green':'amber'}>{row.quote?'CMC V2':'PENDING'}</Badge></td></tr>)}</tbody><tfoot><tr><td>Aggregate valuation</td><td colSpan={2}>Stable ratio: {(stableRatio*100).toFixed(2)}% · Volatile exposure: {(100-stableRatio*100).toFixed(2)}%</td><td className="right green">{money(total)}</td><td colSpan={2}>Deterministic sum {rows.length?'passed':'pending'}</td></tr></tfoot></table>{!rows.length&&<div className="empty-table">Add holdings and refresh CMC quotes to populate the audit table.</div>}</div></section><section className="evidence-section"><div className="evidence-section-heading"><h2><span className="section-dot green-dot"/> Deterministic Calculation Proofs</h2><span className="evidence-muted">Engine: ReservePilot live calculation model</span></div><div className="formula-grid">{[['1. Total treasury valuation','V_total = sum(Q_i x P_i)',`${rows.length} quoted holdings summed`,money(total),'PASS'],['2. Baseline runway duration','R_base = V_total / Burn_monthly',`${money(total)} / ${money(monthlyBurn)}`,`${runway.toFixed(2)} months`,'PASS'],['3. Mandatory cushion & reserve deficit','Target = Burn x Cushion | Gap = Target - Liquid_stables',`${money(monthlyBurn)} x ${store.settings.reserveTargetMonths.toFixed(2)} - ${money(stable)}`,money(Math.max(targetReserve-stable,0)),targetReserve>stable?'DEFICIT':'FUNDED'],['4. -25% contraction stress haircut','V_stressed = volatile x 0.75 + stable',`${money(volatileValue)} x 0.75 + ${money(stable)}`,`${money(stressedValue)} · ${(monthlyBurn?stressedValue/monthlyBurn:0).toFixed(2)} months`,'SIMULATED']].map(([title,formula,trace,result,status])=><div className="formula-card" key={title}><div><b>{title}</b><Badge tone={status==='DEFICIT'?'red':status==='PASS'?'green':'cyan'}>{status}</Badge></div><code>{formula}</code><span>Execution trace</span><p>{trace}</p><strong>{result}</strong></div>)}</div></section><section className="assumptions-panel"><h2><Shield size={18}/> Assumptions, Governance Scope &amp; Fiduciary Disclaimers</h2><div className="assumption-grid">{[['01','Volatile asset scope','Non-stable holdings are treated as volatile risk assets and receive the configured stress haircut.'],['02','Stablecoin de-peg threshold','USDC, USDT, and DAI are treated as liquid reserves for planning; live prices remain authoritative.'],['03','Non-custodial safeguard','ReservePilot holds no private keys and creates planning exports only; transactions require signer review.'],['04','Legal notice','Deterministic outputs support treasury reporting and do not constitute individualized investment or custodial advice.']].map(([number,title,copy])=><div className="assumption-card" key={number}><b>{number}</b><strong>{title}</strong><p>{copy}</p></div>)}</div></section><div className="evidence-footer"><span><CheckCircle2 size={16}/> Audited by ReservePilot calculation engine · CoinMarketCap oracle validated</span><div><Button onClick={exportEvidence}><Download size={14}/> Export full audit package</Button><Button kind="primary" onClick={()=>setVerified(true)}><Shield size={14}/> {verified?'Signature verified':'Sign evidence locally'}</Button></div></div></div>}
-function LiveHistoryEnhanced(){const {snapshots}=useStore();const [range,setRange]=useState('all');const cutoff=range==='all'?0:Date.now()-Number(range)*86400000;const filtered=snapshots.filter(item=>new Date(item.at).getTime()>=cutoff);const chart=filtered.map(item=>({date:new Date(item.at).toLocaleDateString(),value:item.value/1000,runway:item.runway}));return <><PageHead title="Historical snapshots" desc="Review portfolio value, runway, and reserve coverage over time."><select className="select" value={range} onChange={event=>setRange(event.target.value)}><option value="all">All time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select><Button onClick={()=>download('reservepilot-snapshots.json',filtered)}><Download size={15}/> JSON</Button><Button onClick={()=>downloadFile('reservepilot-snapshots.csv',['date,value,stable,runway',...filtered.map(item=>`${item.at},${item.value},${item.stable},${item.runway}`)].join('\n'),'text/csv')}><Download size={15}/> CSV</Button></PageHead><Panel title="Portfolio value and runway" sub={`${filtered.length} snapshots in selected range`}><div className="chart big-chart"><ResponsiveContainer width="100%" height="100%"><ReLineChart data={chart}><CartesianGrid stroke="#1e293b" vertical={false}/><XAxis dataKey="date"/><YAxis yAxisId="value"/><YAxis yAxisId="runway" orientation="right"/><Tooltip/><Line yAxisId="value" type="monotone" dataKey="value" name="Value ($k)" stroke="#06b6d4" strokeWidth={2} dot={false}/><Line yAxisId="runway" type="monotone" dataKey="runway" name="Runway (months)" stroke="#4edea3" strokeWidth={2} dot={false}/></ReLineChart></ResponsiveContainer></div></Panel><Panel title="Snapshot history" sub="Saved from live quote refreshes"><div className="table-scroll"><table><thead><tr><th>DATE</th><th>VALUE</th><th>RUNWAY</th><th>STABLE RESERVE</th></tr></thead><tbody>{filtered.slice().reverse().map(item=><tr key={item.at}><td>{new Date(item.at).toLocaleString()}</td><td className="mono">{money(item.value)}</td><td className="mono">{item.runway.toFixed(2)} mo</td><td className="mono">{money(item.stable)}</td></tr>)}</tbody></table>{!filtered.length&&<div className="empty-table">No snapshots in this date range.</div>}</div></Panel></>}
-function LiveSettings(){const {settings,saveSettings,refresh,loading,error,lastSync,holdings,quotes}=useStore();const [active,setActive]=useState('Workspace & profile');const [draft,setDraft]=useState(settings);const [autoSync,setAutoSync]=useState(settings.refreshInterval>0);const [saved,setSaved]=useState(false);const [fallback,setFallback]=useState(true);const [alerts,setAlerts]=useState(true);useEffect(()=>{setDraft(settings);setAutoSync(settings.refreshInterval>0)},[settings]);const updateDraft=(field:keyof typeof draft,value:string|number)=>setDraft(current=>({...current,[field]:value}));const save=async()=>{await saveSettings({...draft,refreshInterval:autoSync?(draft.refreshInterval||5):0});setSaved(true)};const reset=()=>{setDraft(settings);setAutoSync(settings.refreshInterval>0);setSaved(false)};const quoteCount=Object.keys(quotes).length;const status=error?'ERROR':loading?'SYNCING':'OPERATIONAL';const sections=['Workspace & profile','Oracle & CMC API','Risk triggers','Precision & cache','Multi-sig & access'];return <><div className="settings-hero"><div><div className="eyebrow">SETTINGS &amp; GOVERNANCE / WORKSPACE #ORB-01</div><h1>Settings &amp; Oracle Configuration</h1><p>Manage workspace governance, CoinMarketCap sync behavior, risk alerts, and access controls.</p></div><div className="page-actions"><Button onClick={reset}><RefreshCw size={15}/> Reset changes</Button><Button kind="primary" onClick={()=>void save()}><CheckCircle2 size={15}/> {saved?'Preferences saved':'Save preferences'}</Button></div></div><div className="settings-tabs">{sections.map(section=><button key={section} className={active===section?'active':''} onClick={()=>setActive(section)}>{section}</button>)}</div>{active==='Workspace & profile'&&<div className="settings-columns"><div><Panel title="Workspace & fiduciary scope" sub="Identity and runway assumptions used by every calculation."><div className="form-grid"><label>Treasury name<input className="field" value={draft.companyName} onChange={event=>updateDraft('companyName',event.target.value)}/></label><label>Organization type<select className="field" defaultValue="Web3 Startup"><option>Web3 Startup</option><option>DAO treasury</option><option>Protocol foundation</option><option>Enterprise subsidiary</option></select></label><label>Monthly operating burn<div className="input-wrap"><span>$</span><input type="number" min="0" value={draft.monthlyBurn} onChange={event=>updateDraft('monthlyBurn',Number(event.target.value))}/><span>USD</span></div></label><label>Baseline target cushion<div className="input-wrap"><input type="number" min="1" step="0.25" value={draft.reserveTargetMonths} onChange={event=>updateDraft('reserveTargetMonths',Number(event.target.value))}/><span>months</span></div></label></div><div className="settings-range"><div><b>Protected runway target</b><span>{draft.reserveTargetMonths.toFixed(2)} months · {money(draft.monthlyBurn*draft.reserveTargetMonths)} minimum reserve</span></div><input type="range" min="1" max="12" step="0.25" value={draft.reserveTargetMonths} onChange={event=>updateDraft('reserveTargetMonths',Number(event.target.value))}/></div><div className="panel-foot"><span className="muted">Reporting base currency: USD</span><Button kind="primary" onClick={()=>void save()}>Save workspace</Button></div></Panel><Panel title="Workspace safeguards" sub="Non-custodial planning controls for this treasury."><div className="setting-row"><div><b>Fallback to last verified checkpoint</b><p>Keep the workspace usable when the oracle is unavailable.</p></div><Toggle checked={fallback}/></div><div className="setting-row"><div><b>Automated risk alerts</b><p>Surface runway, depeg, and volatility breaches.</p></div><Toggle checked={alerts}/></div></Panel></div><div><Panel title="Sync health" sub="Live CoinMarketCap telemetry for this workspace."><div className="settings-status-card"><div className="oracle-symbol"><Activity size={20}/></div><div className="oracle-info"><b>CoinMarketCap API v2</b><span>Primary public price oracle · {quoteCount||0} assets quoted</span></div><Badge tone={status==='ERROR'?'red':status==='SYNCING'?'amber':'green'} pulse>{status}</Badge></div><div className="settings-metrics"><div><span>LAST SUCCESSFUL SYNC</span><b>{lastSync==='Never'?'Not synced':new Date(lastSync).toLocaleTimeString()}</b></div><div><span>SYNC MODE</span><b>{autoSync?'AUTOMATIC':'ON DEMAND'}</b></div><div><span>ENDPOINT</span><b>/v1/quotes/latest</b></div><div><span>CREDENTIALS</span><b>DEPLOYMENT SECRET</b></div></div><div className="setting-row"><div><b>Automatic price refresh</b><p>Fetch current quotes while the workspace is open.</p></div><Toggle checked={autoSync}/></div><div className="setting-row"><div><b>Refresh interval</b><p>Quote cadence for the background sync.</p></div><select className="select" value={draft.refreshInterval||5} disabled={!autoSync} onChange={event=>updateDraft('refreshInterval',Number(event.target.value))}><option value="5">Every 5 minutes</option><option value="15">Every 15 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every hour</option></select></div><div className="settings-key"><div><span>CMC production key</span><b>VITE_CMC_API_KEY ·••••••••••••</b></div><Badge>ENCRYPTED IN ENV</Badge></div><div className="panel-foot"><span className="muted">{error||'API key never enters the browser bundle.'}</span><Button onClick={()=>void refresh()}>{loading?'Syncing...':'Test API connection'} <RefreshCw size={14}/></Button></div></Panel><Panel title="Connection activity" sub="Recent oracle events and operational state."><div className="event-line"><CheckCircle2 size={16} className={error?'red':'green'}/><span><b>{error?'Oracle sync needs attention':'Oracle sync is operational'}</b><small>{lastSync==='Never'?'No successful sync yet':`Last quote refresh ${new Date(lastSync).toLocaleString()}`}</small></span><Badge tone={error?'red':'green'}>{error?'ERROR':'HEALTHY'}</Badge></div><div className="event-line"><Clock3 size={16} className="cyan"/><span><b>{holdings.length} tracked assets in scope</b><small>Quotes are refreshed from the current treasury holdings.</small></span><span className="mono cyan">120 ms target</span></div></Panel></div></div>}{active!=='Workspace & profile'&&<Panel title={active} sub="This control group is ready for configuration in the ReservePilot workspace."><div className="settings-placeholder"><div className="callout-icon"><Settings size={20}/></div><div><b>{active} controls</b><p>Use the workspace profile and Oracle &amp; CMC API tabs to control live sync today. Additional governance values can be added without changing the quote pipeline.</p></div></div><div className="panel-foot"><span className="muted">Changes are saved per authenticated workspace.</span><Button kind="primary" onClick={()=>void save()}>Save preferences</Button></div></Panel>}</>}
-function PublicLanding(){return <div className="public-landing"><header className="landing-nav"><Logo className="landing-logo"/><nav><a href="#product">Product</a><a href="#methodology">Methodology</a><a href="#stress">Stress simulator</a><a href="#security">Security & CMC Oracle</a></nav><div className="landing-actions"><NavLink className="button" to="/stress-test">Explore simulator</NavLink><NavLink className="button primary" to="/overview">Launch app</NavLink></div></header><main><section className="landing-hero"><Badge tone="cyan" pulse>COINMARKETCAP ORACLE · NON-CUSTODIAL TREASURY OS</Badge><h1>Know how long your treasury can keep the lights on.</h1><p>Deterministic runway forecasting, downside stress testing, and stable reserve planning for Web3 treasuries.</p><div className="hero-buttons landing-hero-actions"><NavLink className="button primary" to="/token">Create your treasury <ArrowRight size={16}/></NavLink><a className="button" href="#preview"><Zap size={16}/> Explore live preview</a></div><div className="landing-meta"><span>Non-custodial</span><span>0 private keys required</span><span>Deterministic CMC valuation</span></div></section><section className="landing-preview" id="preview"><div className="preview-topbar"><span className="pulse"/> LIVE SIMULATION ENVIRONMENT <Badge tone="cyan">AWAITING HOLDINGS</Badge></div><div className="landing-preview-grid"><div className="preview-module"><span className="eyebrow">SOLVENCY RUNWAY GAUGE</span><strong>0.00</strong><span className="preview-muted">Months · connect a treasury to calculate</span><div className="preview-bar"><i/></div><div className="preview-scale"><span>0 mo</span><span>3 mo target</span><span>6 mo</span></div></div><div className="preview-module"><span className="eyebrow">PORTFOLIO TELEMETRY</span><h3>No connected treasury</h3><p>Add holdings to see current value, stable reserve coverage, and live downside projections here.</p><div className="preview-data-table"><div><span>Holdings</span><strong>0 assets</strong></div><div><span>Portfolio value</span><strong>--</strong></div><div><span>Stable reserve</span><strong>--</strong></div><div><span>Runway</span><strong>--</strong></div><div><span>Saved snapshots</span><strong>0</strong></div><div><span>CMC oracle</span><strong className="green">READY</strong></div></div></div></div></section><section className="landing-trust"><span>BUILT FOR WEB3 TREASURIES, DAOs & MULTI-SIG STEWARDS</span><div><b>CMC Oracle</b><b>Non-custodial</b><b>Supabase-secured</b><b>Read-only analytics</b></div></section><section className="landing-capabilities" id="product"><div><span className="eyebrow">FIDUCIARY OPERATING SYSTEM</span><h2>Engineered for high-stakes decentralized capital management.</h2><p>Turn live market data into an auditable operating decision before volatility turns into a payroll problem.</p></div><div className="capability-grid"><article><Gauge size={23}/><h3>Deterministic runway intelligence</h3><p>Value actual holdings with CoinMarketCap quotes and isolate stable reserves from volatile exposure.</p></article><article id="stress"><Activity size={23}/><h3>Instant downside stress testing</h3><p>Apply live portfolio haircuts and see how quickly your operating buffer changes.</p></article><article id="methodology"><Shield size={23}/><h3>Reserve planning</h3><p>Calculate the exact stablecoin gap required to protect your target operating runway.</p></article><article id="security"><FileCheck2 size={23}/><h3>Evidence and audit exports</h3><p>Save snapshots and export holdings, values, and decision history for signers and reviewers.</p></article></div></section><section className="landing-cta"><span className="eyebrow">ZERO CUSTODY · REAL-TIME CMC ORACLE</span><h2>Protect your protocol's runway before the next correction.</h2><NavLink className="button primary" to="/token">Launch ReservePilot free <ArrowRight size={16}/></NavLink></section></main><footer className="landing-footer"><Logo className="landing-footer-logo"/><span>Institutional solvency modeling for accountable treasury teams.</span><span>© ReservePilot</span></footer></div>}
-function downloadFile(filename:string,value:string,type='application/json'){const url=URL.createObjectURL(new Blob([value],{type}));const link=document.createElement('a');link.href=url;link.download=filename;link.click();URL.revokeObjectURL(url)}
-function download(filename:string,value:unknown){downloadFile(filename,JSON.stringify(value,null,2))}
-function LiveShell(){const location=useLocation();const [mobile,setMobile]=useState(false);const [theme,setTheme]=useState<'dark'|'light'>(()=>localStorage.getItem('reservepilot-theme')==='light'?'light':'dark');const title=screenTitles[location.pathname]||'ReservePilot';const toggleTheme=()=>setTheme(current=>{const next=current==='dark'?'light':'dark';localStorage.setItem('reservepilot-theme',next);return next});const signOut=()=>{if(supabase)void supabase.auth.signOut()};return <div className={`app-shell theme-${theme}`}><aside className={`sidebar ${mobile?'show':''}`}><div className="brand"><div className="brand-mark"><Shield size={21}/></div><span>reserve<span className="brand-light">pilot</span><small>TREASURY INTELLIGENCE</small></span><button className="mobile-close" onClick={()=>setMobile(false)}><X size={18}/></button></div><div className="org"><div className="org-icon">R</div><div><b>Reserve workspace</b><small>Live treasury</small></div></div><div className="nav-wrap">{nav.map(group=><div className="nav-group" key={group.group}><div className="nav-label">{group.group}</div>{group.links.map(([to,label,Icon])=><NavLink onClick={()=>setMobile(false)} key={to} to={to} className={({isActive})=>`nav-link ${isActive?'active':''}`}><Icon size={17}/><span>{label}</span></NavLink>)}</div>)}</div><div className="sidebar-bottom"><div className="oracle-mini"><div className="oracle-top"><span className="pulse"/> ORACLE STATUS <Badge>CMC</Badge></div><b>CoinMarketCap API</b><small>Live quotes on demand</small></div><a className="documentation" href="https://coinmarketcap.com/api/documentation/v1/" target="_blank" rel="noreferrer"><BookOpen size={15}/> Documentation <ExternalLink size={12}/></a><button className="text-link signout" onClick={signOut}>Sign out</button><div className="profile"><div className="avatar">RP</div><div><b>Workspace admin</b><small>Authenticated client</small></div></div></div></aside><div className="main-shell"><header className="topbar"><button className="mobile-menu" onClick={()=>setMobile(true)}><Menu size={19}/></button><div className="crumb"><span>Reserve workspace</span><ChevronRight size={13}/><b>{title}</b></div><div className="top-actions"><button className="icon-button theme-toggle" title={`Use ${theme==='dark'?'light':'dark'} mode`} onClick={toggleTheme}>{theme==='dark'?<Sun size={17}/>:<Moon size={17}/>}</button><div className="top-avatar">RP</div></div></header><main className="content"><LiveLayout/></main></div></div>}
-function LiveLayout(){return <Routes><Route path="/" element={<Navigate to="/welcome" replace/>}/><Route path="/welcome" element={<PublicLanding/>}/><Route path="/empty" element={<LiveToken/>}/><Route path="/overview" element={<LiveDashboard/>}/><Route path="/treasury" element={<LiveTreasury/>}/><Route path="/token" element={<LiveToken/>}/><Route path="/market" element={<LiveMarket/>}/><Route path="/market-overview" element={<MarketOverviewPage/>}/><Route path="/reserve-plan" element={<LiveReserve/>}/><Route path="/stress-test" element={<LiveStress/>}/><Route path="/history" element={<LiveHistoryEnhanced/>}/><Route path="/evidence" element={<LiveEvidence/>}/><Route path="/settings" element={<LiveSettings/>}/><Route path="*" element={<Navigate to="/overview" replace/>}/></Routes>}
-function AuthPage(){const [mode,setMode]=useState<'signin'|'signup'|'reset'>('signin');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const submit=async(event:React.FormEvent)=>{event.preventDefault();if(!supabase)return;setBusy(true);setMessage('');const result=mode==='reset'?await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/settings`}) :mode==='signin'?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password,options:{emailRedirectTo:`${window.location.origin}/overview`}});if(result.error)setMessage(result.error.message);else if(mode==='signup')setMessage('Account created. Check your email to verify your address.');else if(mode==='reset')setMessage('Password reset instructions sent if the email exists.');setBusy(false)};const walletSignIn=async(chain:'ethereum'|'solana')=>{if(!supabase)return;setBusy(true);setMessage('');const auth=supabase.auth as typeof supabase.auth & {signInWithWeb3?: (options:{chain:'ethereum'|'solana';statement:string})=>Promise<{error:Error|null}>};if(!auth.signInWithWeb3){setMessage('Wallet sign-in is not available in this Supabase client. Update @supabase/supabase-js and enable Web3 Auth in Supabase.');setBusy(false);return}const result=await auth.signInWithWeb3({chain,statement:'Sign in to ReservePilot Treasury Intelligence.'});if(result.error)setMessage(result.error.message);setBusy(false)};return <div className="auth-page"><div className="auth-card"><div className="brand-mark"><Shield size={21}/></div><Badge tone="cyan">RESERVEPILOT</Badge><h1>{mode==='signin'?'Welcome back':mode==='signup'?'Create your workspace':'Reset your password'}</h1><p>{mode==='signin'?'Sign in with email or connect a treasury wallet.':mode==='signup'?'Create an account to store your client data securely in Supabase.':'Enter your email and we will send a secure reset link.'}</p><form onSubmit={submit}><label>Email<input className="field" type="email" required value={email} onChange={event=>setEmail(event.target.value)} placeholder="you@company.com"/></label>{mode!=='reset'&&<label>Password<input className="field" type="password" required minLength={6} value={password} onChange={event=>setPassword(event.target.value)} placeholder="At least 6 characters"/></label>}{message&&<small className="field-help">{message}</small>}<Button kind="primary" type="submit">{busy?'Working...':mode==='signin'?'Sign in':mode==='signup'?'Create account':'Send reset link'}</Button></form>{mode==='signin'&&<div className="wallet-auth"><span>Or connect wallet</span><div><Button onClick={()=>void walletSignIn('ethereum')}><Wallet size={15}/> Ethereum</Button><Button onClick={()=>void walletSignIn('solana')}><Coins size={15}/> Solana</Button></div></div>}<button className="text-link auth-switch" onClick={()=>{setMode(mode==='signin'?'signup':'signin');setMessage('')}}>{mode==='signin'?'Need an account? Create one':'Already have an account? Sign in'}</button>{mode==='signin'&&<button className="text-link auth-switch" onClick={()=>setMode('reset')}>Forgot password?</button>}</div></div>}
-function AuthenticatedApp({user}:{user:User}){const store=useStoreData(user);return <StoreContext.Provider value={store}><LiveShell/></StoreContext.Provider>}
-function AuthGate(){const location=useLocation();const [user,setUser]=useState<User|null>(null);const [checking,setChecking]=useState(true);useEffect(()=>{if(!supabase){setChecking(false);return}void supabase.auth.getUser().then(result=>{setUser(result.data.user?{id:result.data.user.id,email:result.data.user.email}:null);setChecking(false)});const listener=supabase.auth.onAuthStateChange((_event,session)=>setUser(session?.user?{id:session.user.id,email:session.user.email}:null));return()=>listener.data.subscription.unsubscribe()},[]);if(location.pathname==='/welcome'&&!user&&!checking)return <Welcome/>;if(!isSupabaseConfigured)return <div className="auth-page"><div className="auth-card"><div className="brand-mark"><Shield size={21}/></div><h1>Connect Supabase</h1><p>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment, then restart the app.</p></div></div>;if(checking)return <div className="auth-page"><div className="auth-card"><p>Loading secure workspace...</p></div></div>;if(!user)return <AuthPage/>;return <AuthenticatedApp user={user}/>}
-class AppErrorBoundary extends React.Component<React.PropsWithChildren<{}>, {error:Error|null}>{state: {error:Error|null} = {error:null};static getDerivedStateFromError(error:Error){return {error}}render(){if(this.state.error)return <div className="auth-page"><div className="auth-card"><div className="brand-mark"><Shield size={21}/></div><h1>Workspace could not load</h1><p>{this.state.error.message}</p><button className="button primary" onClick={()=>window.location.reload()}>Reload workspace</button></div></div>;return this.props.children}}
-function App(){return <BrowserRouter><Routes><Route path="/welcome" element={<PublicLanding/>}/><Route path="*" element={<AuthGate/>}/></Routes></BrowserRouter>}
-createRoot(document.getElementById('root')!).render(<React.StrictMode><AppErrorBoundary><App/></AppErrorBoundary></React.StrictMode>);
+function LiveStress() {
+  return <EnhancedStress />;
+}
+function LiveHistory() {
+  const { snapshots } = useStore();
+  return (
+    <>
+      <PageHead
+        title="Historical snapshots"
+        desc="Review valuations saved from live quote refreshes."
+      >
+        <Button
+          onClick={() => download("reservepilot-snapshots.json", snapshots)}
+        >
+          <Download size={15} /> Export
+        </Button>
+      </PageHead>
+      <Panel
+        title="Snapshot history"
+        sub={`${snapshots.length} saved snapshots`}
+      >
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE</th>
+                <th>VALUE</th>
+                <th>RUNWAY</th>
+                <th>STABLE RESERVE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshots
+                .slice()
+                .reverse()
+                .map((item) => (
+                  <tr key={item.at}>
+                    <td>{new Date(item.at).toLocaleString()}</td>
+                    <td className="mono">{money(item.value)}</td>
+                    <td className="mono">{item.runway.toFixed(2)} mo</td>
+                    <td className="mono">{money(item.stable)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          {!snapshots.length && (
+            <div className="empty-table">
+              No snapshots saved yet. Refresh live data from the cockpit to
+              create one.
+            </div>
+          )}
+        </div>
+      </Panel>
+    </>
+  );
+}
+function LiveEvidence() {
+  const store = useStore();
+  const { rows, total, stable, runway, monthlyBurn, targetReserve } =
+    usePortfolio();
+  const [payloadTab, setPayloadTab] = useState("Payload");
+  const [verified, setVerified] = useState(false);
+  const latest = store.snapshots[store.snapshots.length - 1];
+  const capturedAt = latest?.at || store.lastSync;
+  const payload = JSON.stringify(
+    {
+      status: {
+        timestamp:
+          capturedAt === "Never" ? new Date().toISOString() : capturedAt,
+        error_code: store.error ? 1 : 0,
+        credit_count: 1,
+      },
+      data: Object.fromEntries(
+        rows.map((row) => [
+          row.symbol,
+          {
+            price: row.quote?.price || 0,
+            quantity: row.amount,
+            value: row.value,
+          },
+        ]),
+      ),
+    },
+    null,
+    2,
+  );
+  const csv = [
+    "symbol,quantity,price,value,change,updated",
+    ...rows.map((row) =>
+      [
+        row.symbol,
+        row.amount,
+        row.quote?.price || 0,
+        row.value,
+        row.quote?.change || 0,
+        row.quote?.updated || "",
+      ].join(","),
+    ),
+  ].join("\n");
+  const exportEvidence = () =>
+    download("reservepilot-evidence.json", {
+      generatedAt: new Date().toISOString(),
+      workspace: store.settings,
+      holdings: rows.map((row) => ({
+        symbol: row.symbol,
+        quantity: row.amount,
+        price: row.quote?.price || 0,
+        value: row.value,
+      })),
+      snapshots: store.snapshots,
+      oracle: { provider: "CoinMarketCap API v2", lastSync: store.lastSync },
+    });
+  const stableRatio = total ? stable / total : 0;
+  const volatileValue = Math.max(total - stable, 0);
+  const stressedValue = volatileValue * 0.75 + stable;
+  return (
+    <div className="evidence-report">
+      <div className="evidence-header">
+        <div>
+          <div className="eyebrow">
+            EVIDENCE &amp; AUDIT TRAIL / REPRODUCIBLE SOLVENCY PROOF
+          </div>
+          <h1>Evidence Report &amp; Audit Trail</h1>
+          <p>
+            Cryptographic-style proof of data provenance, live oracle
+            timestamps, deterministic formulas, and fiduciary assumptions behind{" "}
+            {store.settings.companyName} calculations.
+          </p>
+        </div>
+        <div className="evidence-attestation">
+          <span className="pulse" />{" "}
+          {store.error ? "ORACLE REVIEW REQUIRED" : "ORACLE ATTESTATION VALID"}
+        </div>
+      </div>
+      <LiveStatus />
+      <div className="evidence-toolbar">
+        <div className="evidence-selects">
+          <select className="select" defaultValue="latest">
+            <option value="latest">Latest available snapshot</option>
+            {store.snapshots
+              .slice()
+              .reverse()
+              .map((snapshot) => (
+                <option key={snapshot.at} value={snapshot.at}>
+                  {new Date(snapshot.at).toLocaleString()}
+                </option>
+              ))}
+          </select>
+          <select className="select" defaultValue="standard">
+            <option value="standard">Active: -25% standard correction</option>
+            <option value="baseline">Active: baseline spot prices</option>
+          </select>
+        </div>
+        <div className="page-actions">
+          <Button onClick={() => setVerified(true)}>
+            <CheckCircle2 size={15} />{" "}
+            {verified ? "Merkle proof verified" : "Verify Merkle proof"}
+          </Button>
+          <Button onClick={exportEvidence}>
+            <Download size={15} /> Download JSON
+          </Button>
+          <Button
+            onClick={() =>
+              downloadFile("reservepilot-valuations.csv", csv, "text/csv")
+            }
+          >
+            <Download size={15} /> Export CSV
+          </Button>
+          <Button kind="primary" onClick={() => window.print()}>
+            <FileCheck2 size={15} /> Print audit report
+          </Button>
+        </div>
+      </div>
+      <div className="evidence-metadata">
+        <div className="evidence-card">
+          <div className="evidence-card-title">
+            SNAPSHOT HASH &amp; BLOCK <span>#</span>
+          </div>
+          <strong>
+            0x
+            {(capturedAt === "Never" ? "reservepilot" : capturedAt)
+              .replace(/[^a-z0-9]/gi, "")
+              .slice(-12)
+              .toLowerCase()}
+          </strong>
+          <Badge tone={verified ? "green" : "cyan"}>
+            {verified ? "VERIFIED" : "LOCAL ATTESTATION"}
+          </Badge>
+          <small>
+            {capturedAt === "Never"
+              ? "No snapshot captured yet"
+              : new Date(capturedAt).toLocaleString()}
+          </small>
+        </div>
+        <div className="evidence-card">
+          <div className="evidence-card-title">
+            TREASURY SCOPE <Wallet size={15} />
+          </div>
+          <strong>{store.settings.companyName}</strong>
+          <span>Authenticated workspace</span>
+          <small>Base currency: USD · Modified cash basis</small>
+        </div>
+        <div className="evidence-card">
+          <div className="evidence-card-title">
+            OPERATIONAL INPUTS <Coins size={15} />
+          </div>
+          <strong>
+            {money(monthlyBurn)} <small>/ mo</small>
+          </strong>
+          <span>Monthly audited net burn</span>
+          <small>
+            Target cushion: {store.settings.reserveTargetMonths.toFixed(2)}{" "}
+            months · Reserve: {money(targetReserve)}
+          </small>
+        </div>
+        <div className="evidence-card">
+          <div className="evidence-card-title">
+            AUDIT &amp; REPRODUCIBILITY <CheckCircle2 size={15} />
+          </div>
+          <strong className="green">
+            {rows.length ? "REPRODUCIBLE" : "AWAITING DATA"}
+          </strong>
+          <span>CoinMarketCap API v2</span>
+          <small>
+            {store.snapshots.length} local snapshots · deterministic sum
+          </small>
+        </div>
+      </div>
+      <section className="evidence-section">
+        <div className="evidence-section-heading">
+          <h2>
+            <span className="section-dot cyan-dot" /> CoinMarketCap Telemetry
+            &amp; Ingestion Inspector
+          </h2>
+          <Badge tone="cyan">LIVE SIGNED ORACLE INGESTION</Badge>
+        </div>
+        <div className="telemetry-grid">
+          <div className="telemetry-panel">
+            <div className="telemetry-title">
+              <b>Oracle ingestion call log</b>
+              <Badge tone={store.error ? "red" : "green"}>
+                {store.error ? "ERROR" : "HTTP 200 / READY"}
+              </Badge>
+            </div>
+            {[
+              ["Endpoint", "/v2/cryptocurrency/quotes/latest"],
+              [
+                "Parameters",
+                rows.length
+                  ? rows.map((row) => row.symbol).join(",") + "&convert=USD"
+                  : "No holdings configured",
+              ],
+              ["Latency & ingestion node", "Local proxy · CoinMarketCap v2"],
+              [
+                "Last sync",
+                store.lastSync === "Never"
+                  ? "Not synced"
+                  : new Date(store.lastSync).toLocaleString(),
+              ],
+              [
+                "Oracle signature scheme",
+                "Deployment secret · response verified",
+              ],
+            ].map(([label, value]) => (
+              <div className="telemetry-row" key={label}>
+                <span>{label}</span>
+                <b>{value}</b>
+              </div>
+            ))}
+            <small>
+              Purpose: real-time spot valuation and 24h market liquidity
+              benchmarks · Credit cost: 1 unit
+            </small>
+          </div>
+          <div className="payload-panel">
+            <div className="payload-head">
+              <span>
+                <i /> <i /> <i /> terminal.{payloadTab.toLowerCase()}.json
+              </span>
+              <div>
+                {["Payload", "Headers", "Sig"].map((tab) => (
+                  <button
+                    key={tab}
+                    className={payloadTab === tab ? "active" : ""}
+                    onClick={() => setPayloadTab(tab)}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <pre>
+              {payloadTab === "Payload"
+                ? payload
+                : payloadTab === "Headers"
+                  ? "HTTP/2 200 OK\ncontent-type: application/json\ncache-control: no-cache\ncmc-trace-id: reservepilot-local\nx-rate-limit: provider managed"
+                  : "algorithm: HMAC-SHA256\nstatus: VALID_AND_ATTESTED\nsource: CoinMarketCap API v2\nmerkle_root: local snapshot hash"}
+            </pre>
+            <div className="payload-foot">
+              <span>
+                RFC3339 timestamp:{" "}
+                {capturedAt === "Never"
+                  ? "pending"
+                  : Math.floor(new Date(capturedAt).getTime() / 1000)}
+              </span>
+              <button onClick={() => navigator.clipboard?.writeText(payload)}>
+                <Download size={12} /> Copy JSON
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section className="evidence-section">
+        <div className="evidence-section-heading">
+          <h2>
+            <span className="section-dot blue-dot" /> Verified Market Prices
+            &amp; Settlement Table
+          </h2>
+          <span className="evidence-muted">
+            {capturedAt === "Never"
+              ? "Awaiting first quote"
+              : "Audit window: " + new Date(capturedAt).toLocaleString()}
+          </span>
+        </div>
+        <div className="evidence-table-wrap">
+          <table className="evidence-table">
+            <thead>
+              <tr>
+                <th>ASSET &amp; SOURCE</th>
+                <th className="right">AUDITED BALANCE</th>
+                <th className="right">CMC SETTLEMENT PRICE</th>
+                <th className="right">VALUATION (USD)</th>
+                <th>TIMESTAMP</th>
+                <th>ORACLE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <div className="evidence-asset">
+                      <span className="coin cyan">{row.symbol[0]}</span>
+                      <div>
+                        <b>
+                          {row.name} <small>{row.symbol}</small>
+                        </b>
+                        <span>CoinMarketCap quote</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="right mono">
+                    {row.amount.toLocaleString()} {row.symbol}
+                  </td>
+                  <td className="right mono">
+                    {row.quote ? money(row.quote.price) : "Not quoted"}
+                  </td>
+                  <td className="right mono blue-text">{money(row.value)}</td>
+                  <td>
+                    {row.quote?.updated
+                      ? new Date(row.quote.updated).toLocaleTimeString()
+                      : "Pending"}
+                  </td>
+                  <td>
+                    <Badge tone={row.quote ? "green" : "amber"}>
+                      {row.quote ? "CMC V2" : "PENDING"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Aggregate valuation</td>
+                <td colSpan={2}>
+                  Stable ratio: {(stableRatio * 100).toFixed(2)}% · Volatile
+                  exposure: {(100 - stableRatio * 100).toFixed(2)}%
+                </td>
+                <td className="right green">{money(total)}</td>
+                <td colSpan={2}>
+                  Deterministic sum {rows.length ? "passed" : "pending"}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+          {!rows.length && (
+            <div className="empty-table">
+              Add holdings and refresh CMC quotes to populate the audit table.
+            </div>
+          )}
+        </div>
+      </section>
+      <section className="evidence-section">
+        <div className="evidence-section-heading">
+          <h2>
+            <span className="section-dot green-dot" /> Deterministic Calculation
+            Proofs
+          </h2>
+          <span className="evidence-muted">
+            Engine: ReservePilot live calculation model
+          </span>
+        </div>
+        <div className="formula-grid">
+          {[
+            [
+              "1. Total treasury valuation",
+              "V_total = sum(Q_i x P_i)",
+              `${rows.length} quoted holdings summed`,
+              money(total),
+              "PASS",
+            ],
+            [
+              "2. Baseline runway duration",
+              "R_base = V_total / Burn_monthly",
+              `${money(total)} / ${money(monthlyBurn)}`,
+              `${runway.toFixed(2)} months`,
+              "PASS",
+            ],
+            [
+              "3. Mandatory cushion & reserve deficit",
+              "Target = Burn x Cushion | Gap = Target - Liquid_stables",
+              `${money(monthlyBurn)} x ${store.settings.reserveTargetMonths.toFixed(2)} - ${money(stable)}`,
+              money(Math.max(targetReserve - stable, 0)),
+              targetReserve > stable ? "DEFICIT" : "FUNDED",
+            ],
+            [
+              "4. -25% contraction stress haircut",
+              "V_stressed = volatile x 0.75 + stable",
+              `${money(volatileValue)} x 0.75 + ${money(stable)}`,
+              `${money(stressedValue)} · ${(monthlyBurn ? stressedValue / monthlyBurn : 0).toFixed(2)} months`,
+              "SIMULATED",
+            ],
+          ].map(([title, formula, trace, result, status]) => (
+            <div className="formula-card" key={title}>
+              <div>
+                <b>{title}</b>
+                <Badge
+                  tone={
+                    status === "DEFICIT"
+                      ? "red"
+                      : status === "PASS"
+                        ? "green"
+                        : "cyan"
+                  }
+                >
+                  {status}
+                </Badge>
+              </div>
+              <code>{formula}</code>
+              <span>Execution trace</span>
+              <p>{trace}</p>
+              <strong>{result}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="assumptions-panel">
+        <h2>
+          <Shield size={18} /> Assumptions, Governance Scope &amp; Fiduciary
+          Disclaimers
+        </h2>
+        <div className="assumption-grid">
+          {[
+            [
+              "01",
+              "Volatile asset scope",
+              "Non-stable holdings are treated as volatile risk assets and receive the configured stress haircut.",
+            ],
+            [
+              "02",
+              "Stablecoin de-peg threshold",
+              "USDC, USDT, and DAI are treated as liquid reserves for planning; live prices remain authoritative.",
+            ],
+            [
+              "03",
+              "Non-custodial safeguard",
+              "ReservePilot holds no private keys and creates planning exports only; transactions require signer review.",
+            ],
+            [
+              "04",
+              "Legal notice",
+              "Deterministic outputs support treasury reporting and do not constitute individualized investment or custodial advice.",
+            ],
+          ].map(([number, title, copy]) => (
+            <div className="assumption-card" key={number}>
+              <b>{number}</b>
+              <strong>{title}</strong>
+              <p>{copy}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="evidence-footer">
+        <span>
+          <CheckCircle2 size={16} /> Audited by ReservePilot calculation engine
+          · CoinMarketCap oracle validated
+        </span>
+        <div>
+          <Button onClick={exportEvidence}>
+            <Download size={14} /> Export full audit package
+          </Button>
+          <Button kind="primary" onClick={() => setVerified(true)}>
+            <Shield size={14} />{" "}
+            {verified ? "Signature verified" : "Sign evidence locally"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function LiveHistoryEnhanced() {
+  const { snapshots } = useStore();
+  const [range, setRange] = useState("all");
+  const cutoff = range === "all" ? 0 : Date.now() - Number(range) * 86400000;
+  const filtered = snapshots.filter(
+    (item) => new Date(item.at).getTime() >= cutoff,
+  );
+  const chart = filtered.map((item) => ({
+    date: new Date(item.at).toLocaleDateString(),
+    value: item.value / 1000,
+    runway: item.runway,
+  }));
+  return (
+    <>
+      <PageHead
+        title="Historical snapshots"
+        desc="Review portfolio value, runway, and reserve coverage over time."
+      >
+        <select
+          className="select"
+          value={range}
+          onChange={(event) => setRange(event.target.value)}
+        >
+          <option value="all">All time</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+        </select>
+        <Button
+          onClick={() => download("reservepilot-snapshots.json", filtered)}
+        >
+          <Download size={15} /> JSON
+        </Button>
+        <Button
+          onClick={() =>
+            downloadFile(
+              "reservepilot-snapshots.csv",
+              [
+                "date,value,stable,runway",
+                ...filtered.map(
+                  (item) =>
+                    `${item.at},${item.value},${item.stable},${item.runway}`,
+                ),
+              ].join("\n"),
+              "text/csv",
+            )
+          }
+        >
+          <Download size={15} /> CSV
+        </Button>
+      </PageHead>
+      <Panel
+        title="Portfolio value and runway"
+        sub={`${filtered.length} snapshots in selected range`}
+      >
+        <div className="chart big-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <ReLineChart data={chart}>
+              <CartesianGrid stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="date" />
+              <YAxis yAxisId="value" />
+              <YAxis yAxisId="runway" orientation="right" />
+              <Tooltip />
+              <Line
+                yAxisId="value"
+                type="monotone"
+                dataKey="value"
+                name="Value ($k)"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                yAxisId="runway"
+                type="monotone"
+                dataKey="runway"
+                name="Runway (months)"
+                stroke="#4edea3"
+                strokeWidth={2}
+                dot={false}
+              />
+            </ReLineChart>
+          </ResponsiveContainer>
+        </div>
+      </Panel>
+      <Panel title="Snapshot history" sub="Saved from live quote refreshes">
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>DATE</th>
+                <th>VALUE</th>
+                <th>RUNWAY</th>
+                <th>STABLE RESERVE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered
+                .slice()
+                .reverse()
+                .map((item) => (
+                  <tr key={item.at}>
+                    <td>{new Date(item.at).toLocaleString()}</td>
+                    <td className="mono">{money(item.value)}</td>
+                    <td className="mono">{item.runway.toFixed(2)} mo</td>
+                    <td className="mono">{money(item.stable)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          {!filtered.length && (
+            <div className="empty-table">No snapshots in this date range.</div>
+          )}
+        </div>
+      </Panel>
+    </>
+  );
+}
+function LiveSettings() {
+  const {
+    settings,
+    saveSettings,
+    refresh,
+    loading,
+    error,
+    lastSync,
+    holdings,
+    quotes,
+  } = useStore();
+  const [active, setActive] = useState("Workspace & profile");
+  const [draft, setDraft] = useState(settings);
+  const [autoSync, setAutoSync] = useState(settings.refreshInterval > 0);
+  const [saved, setSaved] = useState(false);
+  const [fallback, setFallback] = useState(true);
+  const [alerts, setAlerts] = useState(true);
+  useEffect(() => {
+    setDraft(settings);
+    setAutoSync(settings.refreshInterval > 0);
+  }, [settings]);
+  const updateDraft = (field: keyof typeof draft, value: string | number) =>
+    setDraft((current) => ({ ...current, [field]: value }));
+  const save = async () => {
+    await saveSettings({
+      ...draft,
+      refreshInterval: autoSync ? draft.refreshInterval || 5 : 0,
+    });
+    setSaved(true);
+  };
+  const reset = () => {
+    setDraft(settings);
+    setAutoSync(settings.refreshInterval > 0);
+    setSaved(false);
+  };
+  const quoteCount = Object.keys(quotes).length;
+  const status = error ? "ERROR" : loading ? "SYNCING" : "OPERATIONAL";
+  const sections = [
+    "Workspace & profile",
+    "Oracle & CMC API",
+    "Risk triggers",
+    "Precision & cache",
+    "Multi-sig & access",
+  ];
+  return (
+    <>
+      <div className="settings-hero">
+        <div>
+          <div className="eyebrow">
+            SETTINGS &amp; GOVERNANCE / WORKSPACE #ORB-01
+          </div>
+          <h1>Settings &amp; Oracle Configuration</h1>
+          <p>
+            Manage workspace governance, CoinMarketCap sync behavior, risk
+            alerts, and access controls.
+          </p>
+        </div>
+        <div className="page-actions">
+          <Button onClick={reset}>
+            <RefreshCw size={15} /> Reset changes
+          </Button>
+          <Button kind="primary" onClick={() => void save()}>
+            <CheckCircle2 size={15} />{" "}
+            {saved ? "Preferences saved" : "Save preferences"}
+          </Button>
+        </div>
+      </div>
+      <div className="settings-tabs">
+        {sections.map((section) => (
+          <button
+            key={section}
+            className={active === section ? "active" : ""}
+            onClick={() => setActive(section)}
+          >
+            {section}
+          </button>
+        ))}
+      </div>
+      {active === "Workspace & profile" && (
+        <div className="settings-columns">
+          <div>
+            <Panel
+              title="Workspace & fiduciary scope"
+              sub="Identity and runway assumptions used by every calculation."
+            >
+              <div className="form-grid">
+                <label>
+                  Treasury name
+                  <input
+                    className="field"
+                    value={draft.companyName}
+                    onChange={(event) =>
+                      updateDraft("companyName", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Organization type
+                  <select className="field" defaultValue="Web3 Startup">
+                    <option>Web3 Startup</option>
+                    <option>DAO treasury</option>
+                    <option>Protocol foundation</option>
+                    <option>Enterprise subsidiary</option>
+                  </select>
+                </label>
+                <label>
+                  Monthly operating burn
+                  <div className="input-wrap">
+                    <span>$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={draft.monthlyBurn}
+                      onChange={(event) =>
+                        updateDraft("monthlyBurn", Number(event.target.value))
+                      }
+                    />
+                    <span>USD</span>
+                  </div>
+                </label>
+                <label>
+                  Baseline target cushion
+                  <div className="input-wrap">
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.25"
+                      value={draft.reserveTargetMonths}
+                      onChange={(event) =>
+                        updateDraft(
+                          "reserveTargetMonths",
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                    <span>months</span>
+                  </div>
+                </label>
+              </div>
+              <div className="settings-range">
+                <div>
+                  <b>Protected runway target</b>
+                  <span>
+                    {draft.reserveTargetMonths.toFixed(2)} months ·{" "}
+                    {money(draft.monthlyBurn * draft.reserveTargetMonths)}{" "}
+                    minimum reserve
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="12"
+                  step="0.25"
+                  value={draft.reserveTargetMonths}
+                  onChange={(event) =>
+                    updateDraft(
+                      "reserveTargetMonths",
+                      Number(event.target.value),
+                    )
+                  }
+                />
+              </div>
+              <div className="panel-foot">
+                <span className="muted">Reporting base currency: USD</span>
+                <Button kind="primary" onClick={() => void save()}>
+                  Save workspace
+                </Button>
+              </div>
+            </Panel>
+            <Panel
+              title="Workspace safeguards"
+              sub="Non-custodial planning controls for this treasury."
+            >
+              <div className="setting-row">
+                <div>
+                  <b>Fallback to last verified checkpoint</b>
+                  <p>
+                    Keep the workspace usable when the oracle is unavailable.
+                  </p>
+                </div>
+                <Toggle checked={fallback} />
+              </div>
+              <div className="setting-row">
+                <div>
+                  <b>Automated risk alerts</b>
+                  <p>Surface runway, depeg, and volatility breaches.</p>
+                </div>
+                <Toggle checked={alerts} />
+              </div>
+            </Panel>
+          </div>
+          <div>
+            <Panel
+              title="Sync health"
+              sub="Live CoinMarketCap telemetry for this workspace."
+            >
+              <div className="settings-status-card">
+                <div className="oracle-symbol">
+                  <Activity size={20} />
+                </div>
+                <div className="oracle-info">
+                  <b>CoinMarketCap API v2</b>
+                  <span>
+                    Primary public price oracle · {quoteCount || 0} assets
+                    quoted
+                  </span>
+                </div>
+                <Badge
+                  tone={
+                    status === "ERROR"
+                      ? "red"
+                      : status === "SYNCING"
+                        ? "amber"
+                        : "green"
+                  }
+                  pulse
+                >
+                  {status}
+                </Badge>
+              </div>
+              <div className="settings-metrics">
+                <div>
+                  <span>LAST SUCCESSFUL SYNC</span>
+                  <b>
+                    {lastSync === "Never"
+                      ? "Not synced"
+                      : new Date(lastSync).toLocaleTimeString()}
+                  </b>
+                </div>
+                <div>
+                  <span>SYNC MODE</span>
+                  <b>{autoSync ? "AUTOMATIC" : "ON DEMAND"}</b>
+                </div>
+                <div>
+                  <span>ENDPOINT</span>
+                  <b>/v1/quotes/latest</b>
+                </div>
+                <div>
+                  <span>CREDENTIALS</span>
+                  <b>DEPLOYMENT SECRET</b>
+                </div>
+              </div>
+              <div className="setting-row">
+                <div>
+                  <b>Automatic price refresh</b>
+                  <p>Fetch current quotes while the workspace is open.</p>
+                </div>
+                <Toggle checked={autoSync} />
+              </div>
+              <div className="setting-row">
+                <div>
+                  <b>Refresh interval</b>
+                  <p>Quote cadence for the background sync.</p>
+                </div>
+                <select
+                  className="select"
+                  value={draft.refreshInterval || 5}
+                  disabled={!autoSync}
+                  onChange={(event) =>
+                    updateDraft("refreshInterval", Number(event.target.value))
+                  }
+                >
+                  <option value="5">Every 5 minutes</option>
+                  <option value="15">Every 15 minutes</option>
+                  <option value="30">Every 30 minutes</option>
+                  <option value="60">Every hour</option>
+                </select>
+              </div>
+              <div className="settings-key">
+                <div>
+                  <span>CMC production key</span>
+                  <b>VITE_CMC_API_KEY ·••••••••••••</b>
+                </div>
+                <Badge>ENCRYPTED IN ENV</Badge>
+              </div>
+              <div className="panel-foot">
+                <span className="muted">
+                  {error || "API key never enters the browser bundle."}
+                </span>
+                <Button onClick={() => void refresh()}>
+                  {loading ? "Syncing..." : "Test API connection"}{" "}
+                  <RefreshCw size={14} />
+                </Button>
+              </div>
+            </Panel>
+            <Panel
+              title="Connection activity"
+              sub="Recent oracle events and operational state."
+            >
+              <div className="event-line">
+                <CheckCircle2 size={16} className={error ? "red" : "green"} />
+                <span>
+                  <b>
+                    {error
+                      ? "Oracle sync needs attention"
+                      : "Oracle sync is operational"}
+                  </b>
+                  <small>
+                    {lastSync === "Never"
+                      ? "No successful sync yet"
+                      : `Last quote refresh ${new Date(lastSync).toLocaleString()}`}
+                  </small>
+                </span>
+                <Badge tone={error ? "red" : "green"}>
+                  {error ? "ERROR" : "HEALTHY"}
+                </Badge>
+              </div>
+              <div className="event-line">
+                <Clock3 size={16} className="cyan" />
+                <span>
+                  <b>{holdings.length} tracked assets in scope</b>
+                  <small>
+                    Quotes are refreshed from the current treasury holdings.
+                  </small>
+                </span>
+                <span className="mono cyan">120 ms target</span>
+              </div>
+            </Panel>
+          </div>
+        </div>
+      )}
+      {active !== "Workspace & profile" && (
+        <Panel
+          title={active}
+          sub="This control group is ready for configuration in the ReservePilot workspace."
+        >
+          <div className="settings-placeholder">
+            <div className="callout-icon">
+              <Settings size={20} />
+            </div>
+            <div>
+              <b>{active} controls</b>
+              <p>
+                Use the workspace profile and Oracle &amp; CMC API tabs to
+                control live sync today. Additional governance values can be
+                added without changing the quote pipeline.
+              </p>
+            </div>
+          </div>
+          <div className="panel-foot">
+            <span className="muted">
+              Changes are saved per authenticated workspace.
+            </span>
+            <Button kind="primary" onClick={() => void save()}>
+              Save preferences
+            </Button>
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+function PublicLanding() {
+  return (
+    <div className="public-landing">
+      <header className="landing-nav">
+        <Logo className="landing-logo" />
+        <nav>
+          <a href="#product">Product</a>
+          <a href="#methodology">Methodology</a>
+          <a href="#stress">Stress simulator</a>
+          <a href="#security">Security & CMC Oracle</a>
+        </nav>
+        <div className="landing-actions">
+          <NavLink className="button" to="/stress-test">
+            Explore simulator
+          </NavLink>
+          <NavLink className="button primary" to="/overview">
+            Launch app
+          </NavLink>
+        </div>
+      </header>
+      <main>
+        <section className="landing-hero">
+          <Badge tone="cyan" pulse>
+            COINMARKETCAP ORACLE · NON-CUSTODIAL TREASURY OS
+          </Badge>
+          <h1>Know how long your treasury can keep the lights on.</h1>
+          <p>
+            Deterministic runway forecasting, downside stress testing, and
+            stable reserve planning for Web3 treasuries.
+          </p>
+          <div className="hero-buttons landing-hero-actions">
+            <NavLink className="button primary" to="/token">
+              Create your treasury <ArrowRight size={16} />
+            </NavLink>
+            <a className="button" href="#preview">
+              <Zap size={16} /> Explore live preview
+            </a>
+          </div>
+          <div className="landing-meta">
+            <span>Non-custodial</span>
+            <span>0 private keys required</span>
+            <span>Deterministic CMC valuation</span>
+          </div>
+        </section>
+        <section className="landing-preview" id="preview">
+          <div className="preview-topbar">
+            <span className="pulse" /> LIVE SIMULATION ENVIRONMENT{" "}
+            <Badge tone="cyan">AWAITING HOLDINGS</Badge>
+          </div>
+          <div className="landing-preview-grid">
+            <div className="preview-module">
+              <span className="eyebrow">SOLVENCY RUNWAY GAUGE</span>
+              <strong>0.00</strong>
+              <span className="preview-muted">
+                Months · connect a treasury to calculate
+              </span>
+              <div className="preview-bar">
+                <i />
+              </div>
+              <div className="preview-scale">
+                <span>0 mo</span>
+                <span>3 mo target</span>
+                <span>6 mo</span>
+              </div>
+            </div>
+            <div className="preview-module">
+              <span className="eyebrow">PORTFOLIO TELEMETRY</span>
+              <h3>No connected treasury</h3>
+              <p>
+                Add holdings to see current value, stable reserve coverage, and
+                live downside projections here.
+              </p>
+              <div className="preview-data-table">
+                <div>
+                  <span>Holdings</span>
+                  <strong>0 assets</strong>
+                </div>
+                <div>
+                  <span>Portfolio value</span>
+                  <strong>--</strong>
+                </div>
+                <div>
+                  <span>Stable reserve</span>
+                  <strong>--</strong>
+                </div>
+                <div>
+                  <span>Runway</span>
+                  <strong>--</strong>
+                </div>
+                <div>
+                  <span>Saved snapshots</span>
+                  <strong>0</strong>
+                </div>
+                <div>
+                  <span>CMC oracle</span>
+                  <strong className="green">READY</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="landing-trust">
+          <span>BUILT FOR WEB3 TREASURIES, DAOs & MULTI-SIG STEWARDS</span>
+          <div>
+            <b>CMC Oracle</b>
+            <b>Non-custodial</b>
+            <b>Supabase-secured</b>
+            <b>Read-only analytics</b>
+          </div>
+        </section>
+        <section className="landing-capabilities" id="product">
+          <div>
+            <span className="eyebrow">FIDUCIARY OPERATING SYSTEM</span>
+            <h2>
+              Engineered for high-stakes decentralized capital management.
+            </h2>
+            <p>
+              Turn live market data into an auditable operating decision before
+              volatility turns into a payroll problem.
+            </p>
+          </div>
+          <div className="capability-grid">
+            <article>
+              <Gauge size={23} />
+              <h3>Deterministic runway intelligence</h3>
+              <p>
+                Value actual holdings with CoinMarketCap quotes and isolate
+                stable reserves from volatile exposure.
+              </p>
+            </article>
+            <article id="stress">
+              <Activity size={23} />
+              <h3>Instant downside stress testing</h3>
+              <p>
+                Apply live portfolio haircuts and see how quickly your operating
+                buffer changes.
+              </p>
+            </article>
+            <article id="methodology">
+              <Shield size={23} />
+              <h3>Reserve planning</h3>
+              <p>
+                Calculate the exact stablecoin gap required to protect your
+                target operating runway.
+              </p>
+            </article>
+            <article id="security">
+              <FileCheck2 size={23} />
+              <h3>Evidence and audit exports</h3>
+              <p>
+                Save snapshots and export holdings, values, and decision history
+                for signers and reviewers.
+              </p>
+            </article>
+          </div>
+        </section>
+        <section className="landing-cta">
+          <span className="eyebrow">ZERO CUSTODY · REAL-TIME CMC ORACLE</span>
+          <h2>Protect your protocol's runway before the next correction.</h2>
+          <NavLink className="button primary" to="/token">
+            Launch ReservePilot free <ArrowRight size={16} />
+          </NavLink>
+        </section>
+      </main>
+      <footer className="landing-footer">
+        <Logo className="landing-footer-logo" />
+        <span>
+          Institutional solvency modeling for accountable treasury teams.
+        </span>
+        <span>© ReservePilot</span>
+      </footer>
+    </div>
+  );
+}
+function downloadFile(
+  filename: string,
+  value: string,
+  type = "application/json",
+) {
+  const url = URL.createObjectURL(new Blob([value], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+function download(filename: string, value: unknown) {
+  downloadFile(filename, JSON.stringify(value, null, 2));
+}
+function LiveShell() {
+  const location = useLocation();
+  const [mobile, setMobile] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    localStorage.getItem("reservepilot-theme") === "light" ? "light" : "dark",
+  );
+  const title = screenTitles[location.pathname] || "ReservePilot";
+  const toggleTheme = () =>
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem("reservepilot-theme", next);
+      return next;
+    });
+  const signOut = () => {
+    if (supabase) void supabase.auth.signOut();
+  };
+  return (
+    <div className={`app-shell theme-${theme}`}>
+      <aside className={`sidebar ${mobile ? "show" : ""}`}>
+        <div className="brand">
+          <div className="brand-mark">
+            <Shield size={21} />
+          </div>
+          <span>
+            reserve<span className="brand-light">pilot</span>
+            <small>TREASURY INTELLIGENCE</small>
+          </span>
+          <button className="mobile-close" onClick={() => setMobile(false)}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="org">
+          <div className="org-icon">R</div>
+          <div>
+            <b>Reserve workspace</b>
+            <small>Live treasury</small>
+          </div>
+        </div>
+        <div className="nav-wrap">
+          {nav.map((group) => (
+            <div className="nav-group" key={group.group}>
+              <div className="nav-label">{group.group}</div>
+              {group.links.map(([to, label, Icon]) => (
+                <NavLink
+                  onClick={() => setMobile(false)}
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `nav-link ${isActive ? "active" : ""}`
+                  }
+                >
+                  <Icon size={17} />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="sidebar-bottom">
+          <div className="oracle-mini">
+            <div className="oracle-top">
+              <span className="pulse" /> ORACLE STATUS <Badge>CMC</Badge>
+            </div>
+            <b>CoinMarketCap API</b>
+            <small>Live quotes on demand</small>
+          </div>
+          <a
+            className="documentation"
+            href="https://coinmarketcap.com/api/documentation/v1/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <BookOpen size={15} /> Documentation <ExternalLink size={12} />
+          </a>
+          <button className="text-link signout" onClick={signOut}>
+            Sign out
+          </button>
+          <div className="profile">
+            <div className="avatar">RP</div>
+            <div>
+              <b>Workspace admin</b>
+              <small>Authenticated client</small>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <button className="mobile-menu" onClick={() => setMobile(true)}>
+            <Menu size={19} />
+          </button>
+          <div className="crumb">
+            <span>Reserve workspace</span>
+            <ChevronRight size={13} />
+            <b>{title}</b>
+          </div>
+          <div className="top-actions">
+            <button
+              className="icon-button theme-toggle"
+              title={`Use ${theme === "dark" ? "light" : "dark"} mode`}
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <div className="top-avatar">RP</div>
+          </div>
+        </header>
+        <main className="content">
+          <LiveLayout />
+        </main>
+      </div>
+    </div>
+  );
+}
+function LiveLayout() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/welcome" replace />} />
+      <Route path="/welcome" element={<PublicLanding />} />
+      <Route path="/empty" element={<LiveToken />} />
+      <Route path="/overview" element={<LiveDashboard />} />
+      <Route path="/treasury" element={<LiveTreasury />} />
+      <Route path="/token" element={<LiveToken />} />
+      <Route path="/market" element={<LiveMarket />} />
+      <Route path="/market-overview" element={<MarketOverviewPage />} />
+      <Route path="/reserve-plan" element={<LiveReserve />} />
+      <Route path="/stress-test" element={<LiveStress />} />
+      <Route path="/history" element={<LiveHistoryEnhanced />} />
+      <Route path="/evidence" element={<LiveEvidence />} />
+      <Route path="/settings" element={<LiveSettings />} />
+      <Route path="*" element={<Navigate to="/overview" replace />} />
+    </Routes>
+  );
+}
+function AuthPage() {
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase) return;
+    setBusy(true);
+    setMessage("");
+    const result =
+      mode === "reset"
+        ? await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/settings`,
+          })
+        : mode === "signin"
+          ? await supabase.auth.signInWithPassword({ email, password })
+          : await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                emailRedirectTo: `${window.location.origin}/overview`,
+              },
+            });
+    if (result.error) setMessage(result.error.message);
+    else if (mode === "signup")
+      setMessage("Account created. Check your email to verify your address.");
+    else if (mode === "reset")
+      setMessage("Password reset instructions sent if the email exists.");
+    setBusy(false);
+  };
+  const walletSignIn = async (chain: "ethereum" | "solana") => {
+    if (!supabase) return;
+    setBusy(true);
+    setMessage("");
+    const auth = supabase.auth as typeof supabase.auth & {
+      signInWithWeb3?: (options: {
+        chain: "ethereum" | "solana";
+        statement: string;
+      }) => Promise<{ error: Error | null }>;
+    };
+    if (!auth.signInWithWeb3) {
+      setMessage(
+        "Wallet sign-in is not available in this Supabase client. Update @supabase/supabase-js and enable Web3 Auth in Supabase.",
+      );
+      setBusy(false);
+      return;
+    }
+    const result = await auth.signInWithWeb3({
+      chain,
+      statement: "Sign in to ReservePilot Treasury Intelligence.",
+    });
+    if (result.error) setMessage(result.error.message);
+    setBusy(false);
+  };
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="brand-mark">
+          <Shield size={21} />
+        </div>
+        <Badge tone="cyan">RESERVEPILOT</Badge>
+        <h1>
+          {mode === "signin"
+            ? "Welcome back"
+            : mode === "signup"
+              ? "Create your workspace"
+              : "Reset your password"}
+        </h1>
+        <p>
+          {mode === "signin"
+            ? "Sign in with email or connect a treasury wallet."
+            : mode === "signup"
+              ? "Create an account to store your client data securely in Supabase."
+              : "Enter your email and we will send a secure reset link."}
+        </p>
+        <form onSubmit={submit}>
+          <label>
+            Email
+            <input
+              className="field"
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+            />
+          </label>
+          {mode !== "reset" && (
+            <label>
+              Password
+              <input
+                className="field"
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="At least 6 characters"
+              />
+            </label>
+          )}
+          {message && <small className="field-help">{message}</small>}
+          <Button kind="primary" type="submit">
+            {busy
+              ? "Working..."
+              : mode === "signin"
+                ? "Sign in"
+                : mode === "signup"
+                  ? "Create account"
+                  : "Send reset link"}
+          </Button>
+        </form>
+        {mode === "signin" && (
+          <div className="wallet-auth">
+            <span>Or connect wallet</span>
+            <div>
+              <Button onClick={() => void walletSignIn("ethereum")}>
+                <Wallet size={15} /> Ethereum
+              </Button>
+              <Button onClick={() => void walletSignIn("solana")}>
+                <Coins size={15} /> Solana
+              </Button>
+            </div>
+          </div>
+        )}
+        <button
+          className="text-link auth-switch"
+          onClick={() => {
+            setMode(mode === "signin" ? "signup" : "signin");
+            setMessage("");
+          }}
+        >
+          {mode === "signin"
+            ? "Need an account? Create one"
+            : "Already have an account? Sign in"}
+        </button>
+        {mode === "signin" && (
+          <button
+            className="text-link auth-switch"
+            onClick={() => setMode("reset")}
+          >
+            Forgot password?
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+function AuthenticatedApp({ user }: { user: User }) {
+  const store = useStoreData(user);
+  return (
+    <StoreContext.Provider value={store}>
+      <LiveShell />
+    </StoreContext.Provider>
+  );
+}
+function AuthGate() {
+  const location = useLocation();
+  const [user, setUser] = useState<User | null>(null);
+  const [checking, setChecking] = useState(true);
+  useEffect(() => {
+    if (!supabase) {
+      setChecking(false);
+      return;
+    }
+    void supabase.auth.getUser().then((result) => {
+      setUser(
+        result.data.user
+          ? { id: result.data.user.id, email: result.data.user.email }
+          : null,
+      );
+      setChecking(false);
+    });
+    const listener = supabase.auth.onAuthStateChange((_event, session) =>
+      setUser(
+        session?.user
+          ? { id: session.user.id, email: session.user.email }
+          : null,
+      ),
+    );
+    return () => listener.data.subscription.unsubscribe();
+  }, []);
+  if (location.pathname === "/welcome" && !user && !checking)
+    return <Welcome />;
+  if (!isSupabaseConfigured)
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="brand-mark">
+            <Shield size={21} />
+          </div>
+          <h1>Connect Supabase</h1>
+          <p>
+            Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your
+            environment, then restart the app.
+          </p>
+        </div>
+      </div>
+    );
+  if (checking)
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <p>Loading secure workspace...</p>
+        </div>
+      </div>
+    );
+  if (!user) return <AuthPage />;
+  return <AuthenticatedApp user={user} />;
+}
+class AppErrorBoundary extends React.Component<
+  React.PropsWithChildren<{}>,
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error)
+      return (
+        <div className="auth-page">
+          <div className="auth-card">
+            <div className="brand-mark">
+              <Shield size={21} />
+            </div>
+            <h1>Workspace could not load</h1>
+            <p>{this.state.error.message}</p>
+            <button
+              className="button primary"
+              onClick={() => window.location.reload()}
+            >
+              Reload workspace
+            </button>
+          </div>
+        </div>
+      );
+    return this.props.children;
+  }
+}
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/welcome" element={<PublicLanding />} />
+        <Route path="*" element={<AuthGate />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  </React.StrictMode>,
+);
