@@ -106,7 +106,7 @@ type Store = {
   add: (holding: Omit<Holding, "id">) => Promise<boolean>;
   remove: (id: string) => Promise<void>;
   snapshot: (quoteOverrides?: Record<string, Quote>) => Promise<void>;
-  saveSettings: (settings: ClientSettings) => Promise<void>;
+  saveSettings: (settings: ClientSettings) => Promise<boolean>;
 };
 type User = { id: string; email?: string };
 const StoreContext = createContext<Store | null>(null);
@@ -445,10 +445,12 @@ function useStoreData(user: User): Store {
         });
       if (result.error) {
         setError(result.error.message);
-        return;
+        return false;
       }
     }
     setSettings(next);
+    setError("");
+    return true;
   };
   return {
     holdings,
@@ -2628,7 +2630,7 @@ function LiveTreasury() {
   );
 }
 function LiveProfile({ tab = "Operating costs" }: { tab?: string }) {
-  const { settings, saveSettings } = useStore();
+  const { settings, saveSettings, error } = useStore();
   const [draft, setDraft] = useState(settings);
   const [saved, setSaved] = useState(false);
   useEffect(() => setDraft(settings), [settings]);
@@ -2703,14 +2705,14 @@ function LiveProfile({ tab = "Operating costs" }: { tab?: string }) {
         <span className="muted">{saved ? "Saved just now" : "Not saved"}</span>
         <Button
           kind="primary"
-          onClick={() => {
-            void saveSettings(draft);
-            setSaved(true);
+          onClick={async () => {
+            setSaved(await saveSettings(draft));
           }}
         >
           Save changes
         </Button>
       </div>
+      {error && <small className="field-help red">{error}</small>}
     </Panel>
   );
 }
@@ -4727,11 +4729,11 @@ function LiveSettings() {
   const updateDraft = (field: keyof typeof draft, value: string | number) =>
     setDraft((current) => ({ ...current, [field]: value }));
   const save = async () => {
-    await saveSettings({
+    const savedSuccessfully = await saveSettings({
       ...draft,
       refreshInterval: autoSync ? draft.refreshInterval || 5 : 0,
     });
-    setSaved(true);
+    setSaved(savedSuccessfully);
   };
   const reset = () => {
     setDraft(settings);
