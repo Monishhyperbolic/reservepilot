@@ -23,7 +23,7 @@ function useStore() { const store = useContext(StoreContext); if (!store) throw 
 function usePortfolio() { const { holdings, quotes, settings } = useStore(); return useMemo(() => { const rows = holdings.map(item => ({ ...item, quote: quotes[item.symbol], value: item.amount * (quotes[item.symbol]?.price || 0) })); const total = rows.reduce((sum, item) => sum + item.value, 0); const stable = rows.filter(item => ['USDC', 'USDT', 'DAI'].includes(item.symbol)).reduce((sum, item) => sum + item.value, 0); return { rows, total, stable, runway: settings.monthlyBurn ? total / settings.monthlyBurn : 0, monthlyBurn: settings.monthlyBurn, targetReserve: settings.monthlyBurn * settings.reserveTargetMonths }; }, [holdings, quotes, settings]); }
 
 const nav = [
-  { group:'WORKSPACE', links:[['/overview','Executive cockpit',LayoutDashboard],['/treasury','Treasury setup',Wallet],['/market','Market overview',Globe2],['/reserve-plan','Reserve plan',Shield],['/stress-test','Stress simulator',Activity]] },
+  { group:'WORKSPACE', links:[['/overview','Executive cockpit',LayoutDashboard],['/treasury','Treasury setup',Wallet],['/market','Market',Globe2],['/reserve-plan','Reserve plan',Shield],['/stress-test','Stress simulator',Activity]] },
   { group:'INTELLIGENCE', links:[['/history','Historical snapshots',FileClock],['/evidence','Evidence report',FileCheck2]] },
   { group:'SYSTEM', links:[['/settings','Settings & oracles',Settings]] },
 ] as const;
